@@ -3,13 +3,17 @@
 # ######################################################################################################################
 
 # General libraries, parameters and functions
-from HMS_initialize import *
+from initialize import *
 # import os; sys.path.append(os.getcwd() + "\\code")  # not needed if code is marked as "source" in pycharm
 
+
+'''
 # Main parameter
 TARGET_TYPE = "CLASS"
+'''
 
 # Specific parameters (CLASS is default)
+'''
 target_name = "survived"
 ylim = (0, 1)
 min_width = 0
@@ -26,35 +30,54 @@ if TARGET_TYPE == "REGR":
     ylim = (0, 300e3)
     cutoff_corr = 0.8
     cutoff_varimp = 0.52
-
+'''
 
 # ######################################################################################################################
 # ETL
 # ######################################################################################################################
 
-# --- Read data ------------------------------------------------------------------------------------------------------
+# --- Read data and adapt to be more readable --------------------------------------------------------------------------
 
-# noinspection PyUnresolvedReferences
-if TARGET_TYPE == "CLASS":
-    df_orig = pd.read_csv(dataloc + "titanic.csv")
-else:
-    df_orig = pd.read_csv(dataloc + "AmesHousing.txt", delimiter = "\t")
-    df_orig.columns = df_orig.columns.str.replace(" ", "_")
-    # alternatively: df_orig.rename(columns = lambda x: x.replace(" ", "_"), inplace=True)
-df_orig.describe()
-df_orig.describe(include = ["object"])
+# Read
+#df_orig_old = pd.concat([pd.read_csv(dataloc + "train.csv", parse_dates=["datetime"]).assign(fold_orig="train"),
+#                     pd.read_csv(dataloc + "test.csv", parse_dates=["datetime"]).assign(fold_orig="test")])
+#df_orig_old.describe()
 
-"""
+# Adapt to be more readable
+df_orig = (pd.read_csv(dataloc + "hour.csv", parse_dates=["dteday"])
+           .replace({"season": {1: "winter", 2: "spring", 3: "summer", 4: "fall"},
+                     "yr": {0: "2011", 1: "2012"},
+                     "holiday": {0: "No", 1: "Yes"},
+                     "workingday": {0: "No", 1: "Yes"},
+                     "weathersit": {1: "clear", 2: "misty", 3: "light rain", 4: "heavy rain"}})
+           .assign(weekday=lambda x: x["dteday"].dt.day_name().str.slice(0, 3),
+                   mnth=lambda x: x["mnth"].astype("str").str.zfill(2),
+                   hr=lambda x: x["hr"].astype("str").str.zfill(2))
+           .assign(temp=lambda x: x["temp"] * 47 - 8,
+                   atemp=lambda x: x["atemp"] * 66 - 16,
+                   windspeed=lambda x: x["windspeed"] * 67)
+           .assign(kaggle_fold=lambda x: np.where(x["dteday"].dt.day >= 20, "test", "train")))
+
+# Create some artifacts
+df_orig["high_card"] = df_orig["hum"].astype('str')  # high cardinality categorical variable
+df_orig["hum"] = df_orig["hum"].where(np.random.random_sample(len(df_orig)) > 0.1, other=np.nan)  # some missings
+
+# Create artificial targets
+df_orig["cnt_class"] = pd.qcut(df_orig["cnt"], q=[0, 0.8, 1], labels=["low", "high"])
+df_orig["cnt_multclass"] = pd.qcut(df_orig["cnt"], q=[0, 0.8, 0.95, 1], labels=["low", "high", "very high"])
+df_orig["cnt_multclass"].value_counts()
+    
+'''
 # Check some stuff
-df_values = create_values_df(df_orig, 10)
-print(df_values)
-if TARGET_TYPE == "CLASS":
-    df_orig["survived"].value_counts() / df_orig.shape[0]
-if TARGET_TYPE =="REGR":
-    fig, ax = plt.subplots(1, 2)
-    df_orig["SalePrice"].plot.hist(bins=20, ax = ax[0])
-    np.log(df_orig["SalePrice"]).plot.hist(bins=20, ax = ax[1]);
-"""
+df_orig.dtypes
+df_orig.describe()
+create_values_df(df_orig, dtypes=["object"]).T
+
+fig, ax = plt.subplots(1, 3, figsize=(15,5))
+df_orig["cnt"].plot.hist(bins=50, ax=ax[0])
+df_orig["cnt"].hist(density=True, cumulative=True, bins=50, histtype="step", ax=ax[1])
+np.log(df_orig["cnt"]).plot.hist(bins=50, ax=ax[2])
+'''
 
 # "Save" original data
 df = df_orig.copy()
@@ -62,129 +85,100 @@ df = df_orig.copy()
 
 # --- Read metadata (Project specific) -----------------------------------------------------------------------------
 
-if TARGET_TYPE == "CLASS":
-    df_meta = pd.read_excel(dataloc + "datamodel_titanic.xlsx", header = 1)
-else:
-    df_meta = pd.read_excel(dataloc + "datamodel_AmesHousing.xlsx", header = 1)
+df_meta = pd.read_excel(dataloc + "datamodel_bikeshare.xlsx", header=1)
 
 # Check
 print(setdiff(df.columns.values, df_meta["variable"].values))
-print(setdiff(df_meta.loc[df_meta["category"] == "orig", "variable"].values, df.columns.values))
+print(setdiff(df_meta.query("category == 'orig'").variable.values, df.columns.values))
 
 # Filter on "ready"
-df_meta_sub = df_meta.loc[df_meta["status"].isin(["ready", "derive"])].reset_index()
+df_meta_sub = df_meta.query("status in ['ready']").reset_index()
 
 
 # --- Feature engineering -----------------------------------------------------------------------------------------
 
-if TARGET_TYPE == "CLASS":
-    df["deck"] = df["cabin"].str[:1]
-    df["familysize"] = df["sibsp"] + df["parch"] + 1
-    df["fare_pp"] = df["fare"] / df.groupby("ticket")["fare"].transform("count")
-    df[["deck", "familysize", "fare_pp"]].describe(include = "all")
-if TARGET_TYPE in ["REGR", "MULTICLASS"]:
-    pass  # number of rooms, sqm_per_room, ...
+df["day_of_month"] = df['dteday'].dt.day.astype("str").str.zfill(2)
 
-# Check
-print(setdiff(df_meta["variable"].values, df.columns.values))
+# Check again
+print(setdiff(df_meta_sub["variable"].values, df.columns.values))
 
 
-# --- Define target and train/test-fold ----------------------------------------------------------------------------
-'''
-# Target
-if TARGET_TYPE == "CLASS":
-    df["target"] = df["survived"]
-if TARGET_TYPE == "REGR":
-    df["target"] = df["SalePrice"]
-if TARGET_TYPE == "MULTICLASS":
-    df["target"] = hms_preproc.QuantileBinner(n_bins = 3, output_format = "quantiles").fit_transform(df["SalePrice"])
-df["target"].describe()
-'''
-if TARGET_TYPE == "MULTICLASS":
-    df["SalePrice_Category"] = hms_preproc.QuantileBinner(n_bins = 3, output_format = "quantiles").fit_transform(df["SalePrice"])
-
+# --- Define train/test/util-fold ----------------------------------------------------------------------------
 
 # Train/Test fold: usually split by time
-np.random.seed(123)
-# noinspection PyTypeChecker
-df["fold"] = np.random.permutation(
-    pd.qcut(np.arange(len(df)), q = [0, 0.1, 0.8, 1], labels = ["util", "train", "test"]))
-print(df.fold.value_counts())
+df["fold"] = df["kaggle_fold"]
+idx_util = df.query("kaggle_fold == 'train'").sample(frac=0.1, random_state=42).index.values
+df["fold"][idx_util] = "util"
 df["fold_num"] = df["fold"].replace({"train": 0, "util": 0, "test": 1})  # Used for pedicting test data
 
-# Define the id
-df["id"] = np.arange(len(df)) + 1
 
 
 # ######################################################################################################################
 # Numeric variables: Explore and adapt
 # ######################################################################################################################
 
-# --- Define numeric covariates -------------------------------------------------------------------------------------
+# --- Define numeric covariates ----------------------------------------------------------------------------------------
 
-nume = df_meta_sub.loc[df_meta_sub["type"] == "metr", "variable"].values
-df = hms_preproc.ScaleConverter(column_names = nume, scale = "numerical").fit_transform(df)
-if TARGET_TYPE in ["REGR", "MULTICLASS"]:
-    # Zeros are missings in AmesHousing
-    df[nume] = df[nume].replace(0, np.nan)
-df[nume].describe()
+nume = df_meta_sub.loc[df_meta_sub["type"] == "nume", "variable"].values
+df[nume] = df[nume].to_numeric()
 
-# --- Create nominal variables for all numeric variables (for linear models) before imputing -------------------------
-df[nume + "_BINNED"] = hms_preproc.QuantileBinner(n_bins = 10, output_format = "quantiles").fit_transform(df[nume])
+
+# --- Create nominal variables for all numeric variables (for linear models) before imputing ---------------------------
+df[nume + "_BINNED"] = df[nume].apply(lambda x: pd.qcut(x, 5).astype("str"))  # alternative sklearns KBinsDiscretizer
 
 # Convert missings to own level ("(Missing)")
 df[nume + "_BINNED"] = df[nume + "_BINNED"].fillna("(Missing)")
-print(create_values_df(df[nume + "_BINNED"], 11))
+print(create_values_df(df[nume + "_BINNED"], 6))
 
 # Get binned variables with just 1 bin (removed later)
 onebin = (nume + "_BINNED")[df[nume + "_BINNED"].nunique() == 1]
 print(onebin)
 
 
-# --- Missings + Outliers + Skewness ---------------------------------------------------------------------------------
+# --- Missings + Outliers + Skewness -----------------------------------------------------------------------------------
 
 # Remove covariates with too many missings from nume
 misspct = df[nume].isnull().mean().round(3)  # missing percentage
-print("misspct:\n", misspct.sort_values(ascending = False))  # view in descending order
+print("misspct:\n", misspct.sort_values(ascending=False))  # view in descending order
 remove = misspct[misspct > 0.95].index.values  # vars to remove
 nume = setdiff(nume, remove)  # adapt metadata
 
 # Check for outliers and skewness
 df[nume].describe()
 start = time.time()
-distr_nume_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows = 2, n_cols = 3, w = 18, h = 12)
-                    .plot(features = df[nume],
-                          target = df[target_name],
-                          file_path = plotloc + TARGET_TYPE + "_distr_nume.pdf"))
+distr_nume_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n_cols=3, w=18, h=12)
+                    .plot(features=df[nume],
+                          target=df[target_name],
+                          file_path=plotloc + TARGET_TYPE + "_distr_nume.pdf"))
 print(time.time()-start)
 
 # Winsorize (hint: plot again before deciding for log-trafo)
-df = hms_preproc.Winsorizer(column_names = nume, quantiles = (0.02, 0.98)).fit_transform(df)
+df = hms_preproc.Winsorizer(column_names=nume, quantiles=(0.02, 0.98)).fit_transform(df)
 
 # Log-Transform
 if TARGET_TYPE == "CLASS":
-    tolog = np.array(["fare"], dtype = "object")
+    tolog = np.array(["fare"], dtype="object")
 else:
-    tolog = np.array(["Lot_Area"], dtype = "object")
+    tolog = np.array(["Lot_Area"], dtype="object")
 df[tolog + "_LOG_"] = df[tolog].apply(lambda x: np.log(x - min(0, np.min(x)) + 1))
 nume = np.where(np.isin(nume, tolog), nume + "_LOG_", nume)  # adapt metadata (keep order)
-df.rename(columns = dict(zip(tolog + "_BINNED", tolog + "_LOG_" + "_BINNED")), inplace = True)  # adapt binned version
+df.rename(columns=dict(zip(tolog + "_BINNED", tolog + "_LOG_" + "_BINNED")), inplace=True)  # adapt binned version
 
 
 # --- Final variable information ------------------------------------------------------------------------------------
 
 # Univariate variable importance
-varimps_nume = (hms_calc.UnivariateFeatureImportanceCalculator(n_bins = 10, n_digits = 2)
-                .calculate(features = df[np.append(nume, nume + "_BINNED")], target = df[target_name]))
+varimps_nume = (hms_calc.UnivariateFeatureImportanceCalculator(n_bins=10, n_digits=2)
+                .calculate(features=df[np.append(nume, nume + "_BINNED")], target=df[target_name]))
 print(varimps_nume)
 
 # Plot
-distr_nume_plots = (hms_plot.MultiFeatureDistributionPlotter(target_limits = ylim, show_regplot = True,
-                                                             n_rows = 2, n_cols = 2, w = 12, h = 8)
-                    .plot(features = df[np.column_stack((nume, nume + "_BINNED")).ravel()],
-                          target = df[target_name],
-                          varimps = varimps_nume,
-                          file_path = plotloc + TARGET_TYPE + "_distr_nume_final.pdf"))
+distr_nume_plots = (hms_plot.MultiFeatureDistributionPlotter(target_limits=ylim, show_regplot=True,
+                                                             n_rows=2, n_cols=2, w=12, h=8)
+                    .plot(features=df[np.column_stack((nume, nume + "_BINNED")).ravel()],
+                          target=df[target_name],
+                          varimps=varimps_nume,
+                          file_path=plotloc + TARGET_TYPE + "_distr_nume_final.pdf"))
 '''
 %matplotlib inline
 def show_figure(fig):
@@ -238,8 +232,6 @@ fig.add_axes(old_ax)
 '''
 
 
-
-
 # --- Removing variables -------------------------------------------------------------------------------------------
 
 # Remove leakage features
@@ -248,8 +240,8 @@ nume = setdiff(nume, remove)
 
 # Remove highly/perfectly (>=98%) correlated (the ones with less NA!)
 df[nume].describe()
-corr_plot = (hms_plot.CorrelationPlotter(cutoff = cutoff_corr, w = 8, h = 6)
-             .plot(features = df[nume], file_path = plotloc + TARGET_TYPE + "_corr_nume.pdf"))
+corr_plot = (hms_plot.CorrelationPlotter(cutoff=cutoff_corr, w=8, h=6)
+             .plot(features=df[nume], file_path=plotloc + TARGET_TYPE + "_corr_nume.pdf"))
 remove = ["xxx", "xxx"]
 nume = setdiff(nume, remove)
 
@@ -259,16 +251,16 @@ nume = setdiff(nume, remove)
 # Hint: In case of having a detailed date variable this can be used as regression target here as well!
 
 # Univariate variable importance (again ONLY for non-missing observations!)
-varimps_nume_fold = (hms_calc.UnivariateFeatureImportanceCalculator(n_bins = 10, n_digits = 2)
-                     .calculate(features = df[nume], target = df["fold_num"]))
+varimps_nume_fold = (hms_calc.UnivariateFeatureImportanceCalculator(n_bins=10, n_digits=2)
+                     .calculate(features=df[nume], target=df["fold_num"]))
 
 # Plot: only variables with with highest importance
 nume_toprint = varimps_nume_fold[varimps_nume_fold > cutoff_varimp].index.values
-distr_nume_folddep_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows = 2, n_cols = 3, w = 18, h = 12)
-                            .plot(features = df[nume_toprint],
-                                  target = df["fold_num"],
-                                  varimps = varimps_nume_fold,
-                                  file_path = plotloc + TARGET_TYPE + "_distr_nume_folddep.pdf"))
+distr_nume_folddep_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n_cols=3, w=18, h=12)
+                            .plot(features=df[nume_toprint],
+                                  target=df["fold_num"],
+                                  varimps=varimps_nume_fold,
+                                  file_path=plotloc + TARGET_TYPE + "_distr_nume_folddep.pdf"))
 
 
 # --- Missing indicator and imputation (must be done at the end of all processing)------------------------------------
@@ -279,7 +271,7 @@ df["MISS_" + miss].describe()
 
 # Impute missings with randomly sampled value (or median, see below)
 np.random.seed(123)
-df = hms_preproc.Imputer(strategy = "median", column_names = miss).fit_transform(df)
+df = hms_preproc.Imputer(strategy="median", column_names=miss).fit_transform(df)
 df[miss].isnull().sum()
 
 
@@ -291,7 +283,7 @@ df[miss].isnull().sum()
 
 # Categorical variables
 cate = df_meta_sub.loc[df_meta_sub.type.isin(["nomi", "ordi"]), "variable"].values
-df = hms_preproc.ScaleConverter(column_names = cate, scale = "categorical").fit_transform(df)
+df = hms_preproc.ScaleConverter(column_names=cate, scale="categorical").fit_transform(df)
 df[cate].describe()
 
 # Convert ordinal features to make it "alphanumerically sorted"
@@ -311,14 +303,14 @@ df[cate].describe()
 
 # Get "too many members" columns and copy these for additional encoded features (for tree based models)
 topn_toomany = 10
-levinfo = df[cate].nunique().sort_values(ascending = False)  # number of levels
+levinfo = df[cate].nunique().sort_values(ascending=False)  # number of levels
 print(levinfo)
 toomany = levinfo[levinfo > topn_toomany].index.values
 print(toomany)
 toomany = setdiff(toomany, ["xxx", "xxx"])  # set exception for important variables
 
 # Create encoded features (for tree based models), i.e. numeric representation
-df[cate + "_ENCODED"] = (hms_preproc.TargetEncoder(subset_index = df[df["fold"] == "util"].index.values)
+df[cate + "_ENCODED"] = (hms_preproc.TargetEncoder(subset_index=df[df["fold"] == "util"].index.values)
                          .fit_transform(df[cate], df[target_name]))
 df["MISS_" + miss + "_ENCODED"] = df["MISS_" + miss].apply(lambda x: x.map({"no_miss": 0, "miss": 1}))
 ''' 
@@ -329,20 +321,20 @@ print(df[df["fold"] == "util"][cate[i]].value_counts())
 '''
 
 # Convert toomany features: lump levels and map missings to own level
-df[toomany] = hms_preproc.CategoryCollapser(n_top = 10).fit_transform(df[toomany])
+df[toomany] = hms_preproc.CategoryCollapser(n_top=10).fit_transform(df[toomany])
 
 # Univariate variable importance
-varimps_cate = (hms_calc.UnivariateFeatureImportanceCalculator(n_digits = 2)
-                .calculate(features = df[np.append(cate, ["MISS_" + miss])], target = df[target_name]))
+varimps_cate = (hms_calc.UnivariateFeatureImportanceCalculator(n_digits=2)
+                .calculate(features=df[np.append(cate, ["MISS_" + miss])], target=df[target_name]))
 print(varimps_cate)
 
 # Check
-distr_cate_plots = (hms_plot.MultiFeatureDistributionPlotter(target_limits = ylim, min_bar_width = min_width,
-                                                             n_rows = 2, n_cols = 3, w = 18, h = 12)
-                    .plot(features = df[np.append(cate, ["MISS_" + miss])],
-                          target = df[target_name],
-                          varimps = varimps_cate,
-                          file_path = plotloc + TARGET_TYPE + "_distr_cate.pdf"))
+distr_cate_plots = (hms_plot.MultiFeatureDistributionPlotter(target_limits=ylim, min_bar_width=min_width,
+                                                             n_rows=2, n_cols=3, w=18, h=12)
+                    .plot(features=df[np.append(cate, ["MISS_" + miss])],
+                          target=df[target_name],
+                          varimps=varimps_cate,
+                          file_path=plotloc + TARGET_TYPE + "_distr_cate.pdf"))
 
 '''
 from hmsPM.datatypes import PlotFunctionCall
@@ -363,25 +355,25 @@ if TARGET_TYPE == "CLASS":
     toomany = setdiff(toomany, ["boat", "xxx"])
 
 # Remove highly/perfectly (>=99%) correlated (the ones with less levels!)
-corr_cate_plot = (hms_plot.CorrelationPlotter(cutoff = cutoff_corr, w = 8, h = 6)
-                  .plot(features = df[np.append(cate, ["MISS_" + miss])],
-                        file_path = plotloc + TARGET_TYPE + "_corr_cate.pdf"))
+corr_cate_plot = (hms_plot.CorrelationPlotter(cutoff=cutoff_corr, w=8, h=6)
+                  .plot(features=df[np.append(cate, ["MISS_" + miss])],
+                        file_path=plotloc + TARGET_TYPE + "_corr_cate.pdf"))
 
 
 # --- Time/fold depedency --------------------------------------------------------------------------------------------
 
 # Hint: In case of having a detailed date variable this can be used as regression target here as well!
 # Univariate variable importance (again ONLY for non-missing observations!)
-varimps_cate_fold = (hms_calc.UnivariateFeatureImportanceCalculator(n_digits = 2)
-                     .calculate(features = df[np.append(cate, ["MISS_" + miss])], target = df["fold_num"]))
+varimps_cate_fold = (hms_calc.UnivariateFeatureImportanceCalculator(n_digits=2)
+                     .calculate(features=df[np.append(cate, ["MISS_" + miss])], target=df["fold_num"]))
 
 # Plot: only variables with with highest importance
 cate_toprint = varimps_cate_fold[varimps_cate_fold > cutoff_varimp].index.values
-distr_cate_folddep_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows = 2, n_cols = 3, w = 18, h = 12)
-                            .plot(features = df[cate_toprint],
-                                  target = df["fold_num"],
-                                  varimps = varimps_cate_fold,
-                                  file_path = plotloc + TARGET_TYPE + "_distr_cate_folddep.pdf"))
+distr_cate_folddep_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n_cols=3, w=18, h=12)
+                            .plot(features=df[cate_toprint],
+                                  target=df["fold_num"],
+                                  varimps=varimps_cate_fold,
+                                  file_path=plotloc + TARGET_TYPE + "_distr_cate_folddep.pdf"))
 
 
 ########################################################################################################################
@@ -421,13 +413,13 @@ setdiff(df.columns.values.tolist(), all_features)
 
 # --- Remove burned data ----------------------------------------------------------------------------------------
 
-df = df.query("fold != 'util'").reset_index(drop = True)
+df = df.query("fold != 'util'").reset_index(drop=True)
 
 
 # --- Save image ----------------------------------------------------------------------------------------------------
 
 # Clean up
-plt.close(fig = "all")  # plt.close(plt.gcf())
+plt.close(fig="all")  # plt.close(plt.gcf())
 del df_orig
 
 # Serialize

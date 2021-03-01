@@ -1,3 +1,5 @@
+/.vscode
+*.lnk
 *.pkl
 code/__pycache__
 .ipynb_checkpoints/
