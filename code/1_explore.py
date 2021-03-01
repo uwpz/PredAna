@@ -85,7 +85,7 @@ df = df_orig.copy()
 
 # --- Read metadata (Project specific) -----------------------------------------------------------------------------
 
-df_meta = pd.read_excel(dataloc + "datamodel_bikeshare.xlsx", header=1)
+df_meta = pd.read_excel(dataloc + "datamodel_bikeshare.xlsx", header=1, engine='openpyxl')
 
 # Check
 print(setdiff(df.columns.values, df_meta["variable"].values))
@@ -105,12 +105,10 @@ print(setdiff(df_meta_sub["variable"].values, df.columns.values))
 
 # --- Define train/test/util-fold ----------------------------------------------------------------------------
 
-# Train/Test fold: usually split by time
-df["fold"] = df["kaggle_fold"]
-idx_util = df.query("kaggle_fold == 'train'").sample(frac=0.1, random_state=42).index.values
-df["fold"][idx_util] = "util"
+df["fold"] = np.where(df.index.isin(df.query("kaggle_fold == 'train'")
+                                    .sample(frac=0.1, random_state=42).index.values),
+                      "util", df["kaggle_fold"])
 df["fold_num"] = df["fold"].replace({"train": 0, "util": 0, "test": 1})  # Used for pedicting test data
-
 
 
 # ######################################################################################################################
@@ -120,11 +118,13 @@ df["fold_num"] = df["fold"].replace({"train": 0, "util": 0, "test": 1})  # Used 
 # --- Define numeric covariates ----------------------------------------------------------------------------------------
 
 nume = df_meta_sub.loc[df_meta_sub["type"] == "nume", "variable"].values
-df[nume] = df[nume].to_numeric()
+df[nume] = df[nume].apply(lambda x: pd.to_numeric(x))
 
 
 # --- Create nominal variables for all numeric variables (for linear models) before imputing ---------------------------
-df[nume + "_BINNED"] = df[nume].apply(lambda x: pd.qcut(x, 5).astype("str"))  # alternative sklearns KBinsDiscretizer
+
+df[nume + "_BINNED"] = (df[nume].apply(lambda x: (pd.qcut(x, 5)
+                                                  .astype("object"))))  # alternative: sklearns KBinsDiscretizer
 
 # Convert missings to own level ("(Missing)")
 df[nume + "_BINNED"] = df[nume + "_BINNED"].fillna("(Missing)")
@@ -150,7 +150,12 @@ distr_nume_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n_cols=3,
                     .plot(features=df[nume],
                           target=df[target_name],
                           file_path=plotloc + TARGET_TYPE + "_distr_nume.pdf"))
-print(time.time()-start)
+print(time.time() - start)
+
+
+fig, ax = plt.subplots(2,3)
+fig.tight
+
 
 # Winsorize (hint: plot again before deciding for log-trafo)
 df = hms_preproc.Winsorizer(column_names=nume, quantiles=(0.02, 0.98)).fit_transform(df)
