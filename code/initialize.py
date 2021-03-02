@@ -39,7 +39,7 @@ import hmsPM.metrics as hms_metrics
 
 # Locations
 dataloc = "../data/"
-plotloc = "../output_HMS/"
+plotloc = "../output/"
 
 # Util
 sns.set(style = "whitegrid")
