@@ -16,6 +16,7 @@ import pdb
 import warnings
 
 # ML
+from category_encoders import target_encoder
 from sklearn.model_selection import *
 from sklearn.metrics import *
 from sklearn.preprocessing import *

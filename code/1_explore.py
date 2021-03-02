@@ -278,7 +278,7 @@ distr_nume_folddep_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n
 # --- Missing indicator and imputation (must be done at the end of all processing)------------------------------------
 
 miss = nume[df[nume].isnull().any().values]  
-df["MISS_" + miss] = pd.DataFrame(np.where(df[miss].isnull(), "miss", "no_miss"))
+df["MISS_" + miss] = pd.DataFrame(np.where(df[miss].isnull(), "No", "Yes"))
 df["MISS_" + miss].describe()
 
 # Impute missings with randomly sampled value (or median, see below)
@@ -305,29 +305,27 @@ df[cate].describe()
 df[cate] = df[cate].fillna("(Missing)")
 df[cate].describe()
 
-# Get "too many members" columns and copy these for additional encoded features (for tree based models)
-topn_toomany = 50
+# Create ordinal/binary-encoded features
+ordi = np.array(["hr", "mnth", "yr"], dtype="object")
+df[ordi + "_ENCODED"] = df[ordi].apply(lambda x: pd.to_numeric(x))  # ordinal
+yesno = np.concatenate([np.array(["holiday", "workingday"], dtype="object"), "MISS_" + miss])
+df[yesno + "_ENCODED"] = df[bina].apply(lambda x: x.map({"No": 0, "Yes": 1}))  # binary
+
+# Create target-encoded features for nominal variables
+nomi = setdiff(cate, np.concatenate([ordi, yesno]))
+df_util = df.query("fold == 'util'").reset_index(drop = True)
+df[nomi + "_ENCODED"] = target_encoder.TargetEncoder().fit(df_util[nomi], df_util["cnt_regr"]).transform(df[nomi])
+#df = df.query("fold != 'util'").reset_index(drop=True)  # remove utility data
+
+# Get "too many members" columns and lump levels 
+topn_toomany = 5
 levinfo = df[cate].nunique().sort_values(ascending=False)  # number of levels
 print(levinfo)
 toomany = levinfo[levinfo > topn_toomany].index.values
 print(toomany)
-toomany = setdiff(toomany, ["xxx", "xxx"])  # set exception for important variables
-
-'''
-# Create encoded features (for tree based models), i.e. numeric representation
-df[cate + "_ENCODED"] = (hms_preproc.TargetEncoder(subset_index=df[df["fold"] == "util"].index.values)
-                         .fit_transform(df[cate], df[target_name]))
-df["MISS_" + miss + "_ENCODED"] = df["MISS_" + miss].apply(lambda x: x.map({"no_miss": 0, "miss": 1}))
-
-# BUG: Some non-exist even they do exist
-i = 4
-print(df[[cate[i],cate[i] + "_ENCODED"]].drop_duplicates())
-print(df[df["fold"] == "util"][cate[i]].value_counts())
-'''
-
-# Convert toomany features: lump levels and map missings to own level
+toomany = setdiff(toomany, ["hr", "mnth", "weekday"])  # set exception for important variables
 if len(toomany):
-    df[toomany] = hms_preproc.CategoryCollapser(n_top=10).fit_transform(df[toomany])
+    df[toomany] = hms_preproc.CategoryCollapser(n_top=5).fit_transform(df[toomany])
 
 
 # --- Final variable information ---------------------------------------------------------------------------------------
@@ -346,16 +344,21 @@ for type in types:
                               varimps=varimps_cate,
                               file_path=plotloc + "distr_cate__" + type + ".pdf"))
 
-'''
+
 from hmsPM.datatypes import PlotFunctionCall
 from hmsPM.plotting.grid import PlotGridBuilder
 from hmsPM.plotting.distribution import FeatureDistributionPlotter
-plot_calls = [
-    PlotFunctionCall(FeatureDistributionPlotter().plot, kwargs = dict(feature = df[cate[1]], target = df["target"])),
-    PlotFunctionCall(sns.distplot, kwargs = dict(a = np.random.randn(100)))
-]
-tmp = PlotGridBuilder(n_rows=2, n_cols=2, h=6, w=6).build(plot_calls=plot_calls)
-'''
+plot_calls = []
+for row in cate[:3]:
+    for col in cate[:3]:
+        if row == col:
+            plot_calls.append(PlotFunctionCall(FeatureDistributionPlotter().plot, 
+                                               kwargs = dict(feature = df[row], target = df["cnt_class"])))
+        else:
+            plot_calls.append(PlotFunctionCall(FeatureDistributionPlotter().plot, 
+                                               kwargs = dict(feature = df[row], target = df[col])))
+tmp = PlotGridBuilder(n_rows=len(cate), n_cols=len(cate), h=60, w=60).build(plot_calls=plot_calls)
+tmp[0].plot()
 
 # --- Removing variables ---------------------------------------------------------------------------------------------
 
