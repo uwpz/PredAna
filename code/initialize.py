@@ -24,7 +24,8 @@ from sklearn.model_selection import cross_validate
 import xgboost as xgb
 import lightgbm as lgbm
 import shap
-from sklearn.utils import _safe_indexing; from itertools import product  # for GridSearchCV_xlgb
+from sklearn.utils import _safe_indexing
+from itertools import product  # for GridSearchCV_xlgb
 from sklearn.base import BaseEstimator, TransformerMixin, clone  # , ClassifierMixin
 
 # hmsPM specific
@@ -43,7 +44,7 @@ dataloc = "../data/"
 plotloc = "../output/"
 
 # Util
-sns.set(style = "whitegrid")
+sns.set(style="whitegrid")
 pd.set_option('display.width', 320)
 pd.set_option('display.max_columns', 20)
 
@@ -76,12 +77,12 @@ def inv_logit(p):
 
 
 # Scoring metrics
-d_scoring = {"CLASS": {"auc": make_scorer(hms_metrics.auc, greater_is_better = True, needs_proba = True),
-                       "acc": make_scorer(hms_metrics.acc, greater_is_better = True)},
-             "MULTICLASS": {"auc": make_scorer(hms_metrics.auc, greater_is_better = True, needs_proba = True),
-                            "acc": make_scorer(hms_metrics.acc, greater_is_better = True)},
-             "REGR": {"spear": make_scorer(hms_metrics.spear, greater_is_better = True),
-                      "rmse": make_scorer(hms_metrics.rmse, greater_is_better = False)}}
+d_scoring = {"regr": {"spear": make_scorer(hms_metrics.spear, greater_is_better=True),
+                      "rmse": make_scorer(hms_metrics.rmse, greater_is_better=False)},
+             "class": {"auc": make_scorer(hms_metrics.auc, greater_is_better=True, needs_proba=True),
+                       "acc": make_scorer(hms_metrics.acc, greater_is_better=True)},
+             "multiclass": {"auc": make_scorer(hms_metrics.auc, greater_is_better=True, needs_proba=True),
+                            "acc": make_scorer(hms_metrics.acc, greater_is_better=True)}}
 
 
 # --- Explore -----------------------------------------------------------------------------------------------------
@@ -96,30 +97,30 @@ def create_values_df(df, topn=5, dtypes=["object"]):
 
 
 # Plot model comparison
-def plot_modelcomp(df_modelcomp_result, modelvar = "model", runvar = "run", scorevar = "test_score", pdf = None):
+def plot_modelcomp(df_modelcomp_result, modelvar="model", runvar="run", scorevar="test_score", pdf=None):
     fig, ax = plt.subplots(1, 1)
-    sns.boxplot(data = df_modelcomp_result, x = modelvar, y = scorevar, showmeans = True,
-                meanprops = {"markerfacecolor": "black", "markeredgecolor": "black"},
-                ax = ax)
-    sns.lineplot(data = df_modelcomp_result, x = modelvar, y = scorevar,
-                 hue = "#" + df_modelcomp_result[runvar].astype("str"), linewidth = 0.5, linestyle = ":",
-                 legend = None, ax = ax)
+    sns.boxplot(data=df_modelcomp_result, x=modelvar, y=scorevar, showmeans=True,
+                meanprops={"markerfacecolor": "black", "markeredgecolor": "black"},
+                ax=ax)
+    sns.lineplot(data=df_modelcomp_result, x=modelvar, y=scorevar,
+                 hue="#" + df_modelcomp_result[runvar].astype("str"), linewidth=0.5, linestyle=":",
+                 legend=None, ax=ax)
     if pdf is not None:
         fig.savefig(pdf)
 
 
 # Variable importance
-def calc_varimp_by_permutation(df, fit, fit_spm = None,
-                               target = "target", nume = None, cate = None, df_ref = None,
-                               target_type = "CLASS",
-                               b_sample = None, b_all = None,
-                               features = None,
-                               random_seed = 999,
-                               n_jobs = 4):
+def calc_varimp_by_permutation(df, fit, fit_spm=None,
+                               target="target", nume=None, cate=None, df_ref=None,
+                               target_type="CLASS",
+                               b_sample=None, b_all=None,
+                               features=None,
+                               random_seed=999,
+                               n_jobs=4):
 
     # Define sparse matrix transformer if None, otherwise get information of it
     if fit_spm is None:
-        fit_spm = hms_preproc.MatrixConverter(to_sparse = True).fit(df_ref[np.append(nume, cate)])
+        fit_spm = hms_preproc.MatrixConverter(to_sparse=True).fit(df_ref[np.append(nume, cate)])
     else:
         nume = fit_spm.column_names_num
         cate = fit_spm.column_names_cat
@@ -155,40 +156,40 @@ def calc_varimp_by_permutation(df, fit, fit_spm = None,
                                      fit.predict(fit_spm.transform(df_perm)))
         return perf
 
-    perf = Parallel(n_jobs = n_jobs, max_nbytes = '100M')(delayed(run_in_parallel)(df, feature)
-                                                          for feature in features)
+    perf = Parallel(n_jobs=n_jobs, max_nbytes='100M')(delayed(run_in_parallel)(df, feature)
+                                                      for feature in features)
 
     # Collect performances and calculate importance
     df_varimp = pd.DataFrame({"feature": features, "perf_diff": np.maximum(0, perf_orig - perf)}) \
-        .sort_values(["perf_diff"], ascending = False).reset_index(drop = False) \
-        .assign(importance = lambda x: 100 * x["perf_diff"] / max(x["perf_diff"])) \
-        .assign(importance_cum = lambda x: 100 * x["perf_diff"].cumsum() / sum(x["perf_diff"])) \
-        .assign(importance_sumnormed = lambda x: 100 * x["perf_diff"] / sum(x["perf_diff"]))
+        .sort_values(["perf_diff"], ascending=False).reset_index(drop=False) \
+        .assign(importance=lambda x: 100 * x["perf_diff"] / max(x["perf_diff"])) \
+        .assign(importance_cum=lambda x: 100 * x["perf_diff"].cumsum() / sum(x["perf_diff"])) \
+        .assign(importance_sumnormed=lambda x: 100 * x["perf_diff"] / sum(x["perf_diff"]))
 
     return df_varimp
 
 
 # Partial dependence
-def calc_partial_dependence(df, fit, df_ref, fit_spm = None,
-                            nume = None, cate = None,
-                            target_type = "CLASS", target_labels = None,
-                            b_sample = None, b_all = None,
-                            features = None,
-                            quantiles = np.arange(0, 1.1, 0.1),
-                            n_jobs = 4):
+def calc_partial_dependence(df, fit, df_ref, fit_spm=None,
+                            nume=None, cate=None,
+                            target_type="CLASS", target_labels=None,
+                            b_sample=None, b_all=None,
+                            features=None,
+                            quantiles=np.arange(0, 1.1, 0.1),
+                            n_jobs=4):
     # df=df_test;  df_ref=df_traintest; target = "target"; target_type=TARGET_TYPE; features=np.append(nume[0],cate[0]);
     # quantiles = np.arange(0, 1.1, 0.1);n_jobs=4
 
     # Define sparse matrix transformer if None, otherwise get information of it
     if fit_spm is None:
-        fit_spm = hms_preproc.MatrixConverter(to_sparse = True).fit(df_ref[np.append(nume, cate)])
+        fit_spm = hms_preproc.MatrixConverter(to_sparse=True).fit(df_ref[np.append(nume, cate)])
 
     else:
         nume = fit_spm.column_names_num
         cate = fit_spm.column_names_cat
 
     # Quantile and and values calculation
-    d_quantiles = df[nume].quantile(quantiles).to_dict(orient = "list")
+    d_quantiles = df[nume].quantile(quantiles).to_dict(orient="list")
     d_categories = fit_spm.categories_categorical_features
 
     # Set features to calculate importance for
@@ -211,13 +212,13 @@ def calc_partial_dependence(df, fit, df_ref, fit_spm = None,
             df_tmp[feature] = value
             if target_type == "CLASS":
                 yhat_mean = np.mean(hms_calc.scale_predictions(fit.predict_proba(fit_spm.transform(df_tmp)),
-                                                               b_sample, b_all), axis = 0)
+                                                               b_sample, b_all), axis=0)
                 df_pd_feature = pd.concat([df_pd_feature,
                                            pd.DataFrame({"feature": feature, "value": str(value),
-                                                         "target": "target", "yhat_mean": yhat_mean[1]}, index = [0])])
+                                                         "target": "target", "yhat_mean": yhat_mean[1]}, index=[0])])
             elif target_type == "MULTICLASS":
                 yhat_mean = np.mean(hms_calc.scale_predictions(fit.predict_proba(fit_spm.transform(df_tmp)),
-                                                               b_sample, b_all), axis = 0)
+                                                               b_sample, b_all), axis=0)
                 df_pd_feature = pd.concat([df_pd_feature,
                                            pd.DataFrame({"feature": feature, "value": str(value),
                                                          "target": target_labels, "yhat_mean": yhat_mean})])
@@ -225,27 +226,27 @@ def calc_partial_dependence(df, fit, df_ref, fit_spm = None,
                 yhat_mean = [np.mean(fit.predict(fit_spm.transform(df_tmp)))]
                 df_pd_feature = pd.concat([df_pd_feature,
                                            pd.DataFrame({"feature": feature, "value": str(value),
-                                                         "target": "target", "yhat_mean": yhat_mean}, index = [0])])
+                                                         "target": "target", "yhat_mean": yhat_mean}, index=[0])])
             # Append prediction of overwritten value
 
         return df_pd_feature
 
     # Run in parallel and append
-    df_pd = pd.concat(Parallel(n_jobs = n_jobs, max_nbytes = '100M')(delayed(run_in_parallel)(feature)
-                                                                     for feature in features))
-    df_pd = df_pd.reset_index(drop = True)
+    df_pd = pd.concat(Parallel(n_jobs=n_jobs, max_nbytes='100M')(delayed(run_in_parallel)(feature)
+                                                                 for feature in features))
+    df_pd = df_pd.reset_index(drop=True)
     return df_pd
 
 
 # Calculate shapely values
 # noinspection PyPep8Naming
-def calc_shap(df_explain, fit, fit_spm = None, nume = None, cate = None, df_ref = None,
-              target_type = "CLASS", b_sample = None, b_all = None):
+def calc_shap(df_explain, fit, fit_spm=None, nume=None, cate=None, df_ref=None,
+              target_type="CLASS", b_sample=None, b_all=None):
     # target_type = TARGET_TYPE;
 
     # Calc X_explain:
     if fit_spm is None:
-        fit_spm = hms_preproc.MatrixConverter(to_sparse = True).fit(df_ref[np.append(nume, cate)])
+        fit_spm = hms_preproc.MatrixConverter(to_sparse=True).fit(df_ref[np.append(nume, cate)])
     X_explain = fit_spm.transform(df_explain)
 
     # Calc mapper
@@ -253,9 +254,9 @@ def calc_shap(df_explain, fit, fit_spm = None, nume = None, cate = None, df_ref 
     if len(fit_spm.column_names_num) > 0:
         df_map = pd.concat([df_map, pd.DataFrame({"variable": fit_spm.column_names_num, "value": None})])
     if len(fit_spm.column_names_cat) > 0:
-        df_map = pd.concat([df_map, (pd.DataFrame.from_dict(fit_spm.categories_categorical_features, orient = 'index')
-                                     .T.melt().dropna().reset_index(drop = True))])
-    df_map = df_map.reset_index(drop = True).reset_index().rename(columns = {"index": "position"})
+        df_map = pd.concat([df_map, (pd.DataFrame.from_dict(fit_spm.categories_categorical_features, orient='index')
+                                     .T.melt().dropna().reset_index(drop=True))])
+    df_map = df_map.reset_index(drop=True).reset_index().rename(columns={"index": "position"})
 
     # Get shap values
     # pdb.set_trace()
@@ -273,26 +274,26 @@ def calc_shap(df_explain, fit, fit_spm = None, nume = None, cate = None, df_ref 
     for i in range(len(shap_values)):
         df_shap = df_shap.append(
             pd.DataFrame(shap_values[i])
-            .reset_index(drop = True)  # clear index
-            .reset_index().rename(columns = {"index": "row_id"})  # add row_id
-            .melt(id_vars = "row_id", var_name = "position", value_name = "shap_value")  # rotate
-            .merge(df_map, how = "left", on = "position")  # add variable name to position
+            .reset_index(drop=True)  # clear index
+            .reset_index().rename(columns={"index": "row_id"})  # add row_id
+            .melt(id_vars="row_id", var_name="position", value_name="shap_value")  # rotate
+            .merge(df_map, how="left", on="position")  # add variable name to position
             .groupby(["row_id", "variable"])["shap_value"].sum().reset_index()  # aggregate cate features
             .merge(df_explain.reset_index()
-                   .rename(columns = {"index": "row_id"})
-                   .melt(id_vars = "row_id", var_name = "variable", value_name = "variable_value"),
-                   how = "left", on = ["row_id", "variable"])  # add variable value
+                   .rename(columns={"index": "row_id"})
+                   .melt(id_vars="row_id", var_name="variable", value_name="variable_value"),
+                   how="left", on=["row_id", "variable"])  # add variable value
             .append(pd.DataFrame({"row_id": np.arange(len(df_explain)),
                                   "variable": "intercept",
                                   "shap_value": intercepts[i],
                                   "variable_value": None})).reset_index(drop=True)  # add intercept
-            .assign(target = i)  # add target
-            .assign(flag_intercept = lambda x: np.where(x["variable"] == "intercept", 1, 0),
-                    abs_shap_value = lambda x: np.abs(x["shap_value"]))  # sorting columns
+            .assign(target=i)  # add target
+            .assign(flag_intercept=lambda x: np.where(x["variable"] == "intercept", 1, 0),
+                    abs_shap_value=lambda x: np.abs(x["shap_value"]))  # sorting columns
             .sort_values(["flag_intercept", "abs_shap_value"], ascending=False)  # sort
-            .assign(shap_value_cum = lambda x: x.groupby(["row_id"])["shap_value"].transform("cumsum"))  # shap cum
-            .sort_values(["row_id", "flag_intercept", "abs_shap_value"], ascending = [True, False, False])
-            .assign(rank = lambda x: x.groupby(["row_id"]).cumcount()+1)).reset_index(drop=True)
+            .assign(shap_value_cum=lambda x: x.groupby(["row_id"])["shap_value"].transform("cumsum"))  # shap cum
+            .sort_values(["row_id", "flag_intercept", "abs_shap_value"], ascending=[True, False, False])
+            .assign(rank=lambda x: x.groupby(["row_id"]).cumcount()+1)).reset_index(drop=True)
 
     if target_type == "REGR":
         df_shap["yhat"] = df_shap["shap_value_cum"]
@@ -304,22 +305,22 @@ def calc_shap(df_explain, fit, fit_spm = None, nume = None, cate = None, df_ref 
         for i in range(n_target):
             df_shap_tmp = (df_shap_tmp
                            .merge(df_shap.loc[df_shap["target"] == i, ["row_id", "variable", "shap_value"]]
-                                         .rename(columns = {"shap_value": "shap_value_" + str(i)}),
-                                  how = "left", on = ["row_id", "variable"])  # add shap from "other" target
+                                         .rename(columns={"shap_value": "shap_value_" + str(i)}),
+                                  how="left", on=["row_id", "variable"])  # add shap from "other" target
                            .sort_values("rank")  # sort by original rank
                            .assign(**{"nominator_" + str(i):
                                       lambda x: np.exp(x
                                                        .groupby(["row_id", "target"])["shap_value_" + str(i)]
                                                        .transform("cumsum"))})  # cumulate "other" targets and exp it
-                           .assign(denominator = lambda x: x["denominator"] + x["nominator_" + str(i)])  # adapt denom
-                           .drop(columns = ["shap_value_" + str(i)])  # make shape original again for next loop
-                           .reset_index(drop = True))
+                           .assign(denominator=lambda x: x["denominator"] + x["nominator_" + str(i)])  # adapt denom
+                           .drop(columns=["shap_value_" + str(i)])  # make shape original again for next loop
+                           .reset_index(drop=True))
 
         # Rescale yhat
         df_shap_tmp = (df_shap_tmp.assign(**{"yhat_" + str(i):
                                              df_shap_tmp["nominator_" + str(i)] / df_shap_tmp["denominator"]
                                              for i in range(n_target)})
-                       .drop(columns = ["nominator_" + str(i) for i in range(n_target)]))
+                       .drop(columns=["nominator_" + str(i) for i in range(n_target)]))
         yhat_cols = ["yhat_" + str(i) for i in range(n_target)]
         df_shap_tmp[yhat_cols] = hms_calc.scale_predictions(df_shap_tmp[yhat_cols], b_sample, b_all)
 
@@ -329,17 +330,17 @@ def calc_shap(df_explain, fit, fit_spm = None, nume = None, cate = None, df_ref 
             df_shap_tmp2 = df_shap_tmp2.append(
                 (df_shap_tmp
                  .query("target == @i")
-                 .assign(yhat = lambda x: x["yhat_" + str(i)])
-                 .drop(columns = yhat_cols)))
+                 .assign(yhat=lambda x: x["yhat_" + str(i)])
+                 .drop(columns=yhat_cols)))
 
         # Sort it to convenient shape
-        df_shap = df_shap_tmp2.sort_values(["row_id", "target", "rank"]).reset_index(drop = True)
+        df_shap = df_shap_tmp2.sort_values(["row_id", "target", "rank"]).reset_index(drop=True)
 
     return df_shap
 
 
 # Check if shap values and yhat match
-def check_shap(df_shap, yhat_shap, target_type = "CLASS"):
+def check_shap(df_shap, yhat_shap, target_type="CLASS"):
 
     # Check
     # noinspection PyUnusedLocal
@@ -348,8 +349,8 @@ def check_shap(df_shap, yhat_shap, target_type = "CLASS"):
         yhat_shap = yhat_shap[:, 1]
         close = np.isclose(df_shap.query("rank == @max_rank").yhat.values, yhat_shap)
     elif target_type == "MULTICLASS":
-        close = np.isclose(df_shap.query("rank == @max_rank").pivot(index = "row_id", columns = "target",
-                                                                    values = "yhat"),
+        close = np.isclose(df_shap.query("rank == @max_rank").pivot(index="row_id", columns="target",
+                                                                    values="yhat"),
                            yhat_shap)
     else:
         close = np.isclose(df_shap.query("rank == @max_rank").yhat.values, yhat_shap)
@@ -368,7 +369,7 @@ def check_shap(df_shap, yhat_shap, target_type = "CLASS"):
 
 # Undersample
 class Undersample(BaseEstimator, TransformerMixin):
-    def __init__(self, n_max_per_level, random_state = 42):
+    def __init__(self, n_max_per_level, random_state=42):
         self.n_max_per_level = n_max_per_level
         self.random_state = random_state
         self.b_sample = None
@@ -381,20 +382,20 @@ class Undersample(BaseEstimator, TransformerMixin):
     def transform(self, df):
         return df
 
-    def fit_transform(self, df, y = None, target = "target"):
+    def fit_transform(self, df, y=None, target="target"):
         # pdb.set_trace()
         self.b_all = df[target].value_counts().values / len(df)
         df = df.groupby(target).apply(lambda x: x.sample(min(self.n_max_per_level, x.shape[0]),
-                                                         random_state = self.random_state)) \
-            .reset_index(drop = True) \
-            .sample(frac = 1).reset_index(drop = True)
+                                                         random_state=self.random_state)) \
+            .reset_index(drop=True) \
+            .sample(frac=1).reset_index(drop=True)
         self.b_sample = df[target].value_counts().values / len(df)
         return df
 
 
 # Special splitter: training fold only from training data, test fold only from test data
 class TrainTestSep:
-    def __init__(self, n_splits = 1, sample_type = "cv", fold_var = "fold", random_state = 42):
+    def __init__(self, n_splits=1, sample_type="cv", fold_var="fold", random_state=42):
         self.n_splits = n_splits
         self.sample_type = sample_type
         self.fold_var = fold_var
@@ -416,7 +417,7 @@ class TrainTestSep:
             if self.sample_type == "cv":
                 i_train_yield = np.concatenate(splits_train)
                 if self.n_splits > 1:
-                    i_train_yield = np.setdiff1d(i_train_yield, splits_train[i], assume_unique = True)
+                    i_train_yield = np.setdiff1d(i_train_yield, splits_train[i], assume_unique=True)
                 i_test_yield = splits_test[i]
             elif self.sample_type == "bootstrap":
                 np.random.seed(self.random_state * (i + 1))
@@ -442,83 +443,82 @@ class GridSearchCV_xlgb(GridSearchCV):
         n_estimators = self.param_grid["n_estimators"]
         param_grid = self.param_grid.copy()
         del param_grid["n_estimators"]
-        df_param_grid = pd.DataFrame(product(*param_grid.values()), columns = param_grid.keys())
+        df_param_grid = pd.DataFrame(product(*param_grid.values()), columns=param_grid.keys())
 
         # Materialize generator as this cannot be pickled for parallel
         self.cv = list(check_cv(self.cv, y).split(X))
 
         # TODO: Iterate also over split (see original fit method)
         def run_in_parallel(i):
-        #for i in range(len(df_param_grid)):
+            # for i in range(len(df_param_grid)):
 
             # Intialize
             df_results = pd.DataFrame()
 
             # Get actual parameter set
-            d_param = df_param_grid.iloc[[i], :].to_dict(orient = "records")[0]
+            d_param = df_param_grid.iloc[[i], :].to_dict(orient="records")[0]
 
             for fold, (i_train, i_test) in enumerate(self.cv):
 
-                #pdb.set_trace()
+                # pdb.set_trace()
                 # Fit only once par parameter set with maximum number of n_estimators
                 fit = (clone(self.estimator).set_params(**d_param,
-                                                        n_estimators = int(max(n_estimators)))
+                                                        n_estimators=int(max(n_estimators)))
                        .fit(_safe_indexing(X, i_train), _safe_indexing(y, i_train), **fit_params))
 
                 # Score with all n_estimators
                 for ntree_limit in n_estimators:
                     if isinstance(self.estimator, lgbm.sklearn.LGBMClassifier):
-                        yhat_test = fit.predict_proba(_safe_indexing(X, i_test), num_iteration = ntree_limit)
+                        yhat_test = fit.predict_proba(_safe_indexing(X, i_test), num_iteration=ntree_limit)
                     elif isinstance(self.estimator, lgbm.sklearn.LGBMRegressor):
-                        yhat_test = fit.predict(_safe_indexing(X, i_test), num_iteration = ntree_limit)
+                        yhat_test = fit.predict(_safe_indexing(X, i_test), num_iteration=ntree_limit)
                     elif isinstance(self.estimator, xgb.sklearn.XGBClassifier):
-                        yhat_test = fit.predict_proba(_safe_indexing(X, i_test), ntree_limit = ntree_limit)
+                        yhat_test = fit.predict_proba(_safe_indexing(X, i_test), ntree_limit=ntree_limit)
                     else:
-                        yhat_test = fit.predict(_safe_indexing(X, i_test), ntree_limit = ntree_limit)
+                        yhat_test = fit.predict(_safe_indexing(X, i_test), ntree_limit=ntree_limit)
 
                     # Do it for training as well
                     if self.return_train_score:
                         if isinstance(self.estimator, lgbm.sklearn.LGBMClassifier):
-                            yhat_train = fit.predict_proba(_safe_indexing(X, i_train), num_iteration = ntree_limit)
+                            yhat_train = fit.predict_proba(_safe_indexing(X, i_train), num_iteration=ntree_limit)
                         elif isinstance(self.estimator, lgbm.sklearn.LGBMRegressor):
-                            yhat_train = fit.predict(_safe_indexing(X, i_train), num_iteration = ntree_limit)
+                            yhat_train = fit.predict(_safe_indexing(X, i_train), num_iteration=ntree_limit)
                         elif isinstance(self.estimator, xgb.sklearn.XGBClassifier):
-                            yhat_train = fit.predict_proba(_safe_indexing(X, i_train), ntree_limit = ntree_limit)
+                            yhat_train = fit.predict_proba(_safe_indexing(X, i_train), ntree_limit=ntree_limit)
                         else:
-                            yhat_train = fit.predict(_safe_indexing(X, i_train), ntree_limit = ntree_limit)
-
+                            yhat_train = fit.predict(_safe_indexing(X, i_train), ntree_limit=ntree_limit)
 
                     # Get performance metrics
                     for scorer in self.scoring:
                         scorer_value = self.scoring[scorer]._score_func(_safe_indexing(y, i_test), yhat_test)
-                        df_results = df_results.append(pd.DataFrame(dict(fold_type = "test", fold = fold,
-                                                                         scorer = scorer, scorer_value = scorer_value,
-                                                                         n_estimators = ntree_limit, **d_param),
-                                                                    index = [0]))
+                        df_results = df_results.append(pd.DataFrame(dict(fold_type="test", fold=fold,
+                                                                         scorer=scorer, scorer_value=scorer_value,
+                                                                         n_estimators=ntree_limit, **d_param),
+                                                                    index=[0]))
                         if self.return_train_score:
                             scorer_value = self.scoring[scorer]._score_func(_safe_indexing(y, i_train), yhat_train)
-                            df_results = df_results.append(pd.DataFrame(dict(fold_type = "train", fold = fold,
-                                                                             scorer = scorer,
-                                                                             scorer_value = scorer_value,
-                                                                             n_estimators = ntree_limit, **d_param),
-                                                                        index = [0]))
+                            df_results = df_results.append(pd.DataFrame(dict(fold_type="train", fold=fold,
+                                                                             scorer=scorer,
+                                                                             scorer_value=scorer_value,
+                                                                             n_estimators=ntree_limit, **d_param),
+                                                                        index=[0]))
             return df_results
 
-        df_results = pd.concat(Parallel(n_jobs = self.n_jobs,
-                                        max_nbytes = '100M')(delayed(run_in_parallel)(row)
-                                                             for row in range(len(df_param_grid))))
+        df_results = pd.concat(Parallel(n_jobs=self.n_jobs,
+                                        max_nbytes='100M')(delayed(run_in_parallel)(row)
+                                                           for row in range(len(df_param_grid))))
 
         # Transform results
         param_names = list(np.append(df_param_grid.columns.values, "n_estimators"))
         df_cv_results = pd.pivot_table(df_results,
-                                       values = "scorer_value",
-                                       index = param_names,
-                                       columns = ["fold_type", "scorer"],
-                                       aggfunc = ["mean", "std"],
-                                       dropna = False)
+                                       values="scorer_value",
+                                       index=param_names,
+                                       columns=["fold_type", "scorer"],
+                                       aggfunc=["mean", "std"],
+                                       dropna=False)
         df_cv_results.columns = ['_'.join(x) for x in df_cv_results.columns.values]
         df_cv_results = df_cv_results.reset_index()
-        self.cv_results_ = df_cv_results.to_dict(orient = "list")
+        self.cv_results_ = df_cv_results.to_dict(orient="list")
 
         # Refit
         if self.refit:
@@ -527,9 +527,7 @@ class GridSearchCV_xlgb(GridSearchCV):
             self.best_index_ = df_cv_results["mean_test_" + self.refit].idxmax()
             self.best_score_ = df_cv_results["mean_test_" + self.refit].loc[self.best_index_]
             self.best_params_ = (df_cv_results[param_names].loc[[self.best_index_]]
-                                 .to_dict(orient = "records")[0])
+                                 .to_dict(orient="records")[0])
             self.best_estimator_ = (clone(self.estimator).set_params(**self.best_params_).fit(X, y, **fit_params))
 
         return self
-
-
