@@ -76,9 +76,18 @@ def inv_logit(p):
     return np.exp(p) / (1 + np.exp(p))
 
 
+def calib(y_true, y_pred):
+    return np.mean(y_true - y_pred)
+
+
+def myrmse(y_true, y_pred):
+    return np.sqrt(np.mean(np.power(y_true + 0.03 - y_pred, 2)))
+
 # Scoring metrics
 d_scoring = {"regr": {"spear": make_scorer(hms_metrics.spear, greater_is_better=True),
-                      "rmse": make_scorer(hms_metrics.rmse, greater_is_better=False)},
+                      "rmse": make_scorer(hms_metrics.rmse, greater_is_better=False),
+                      "myrmse": make_scorer(myrmse, greater_is_better=False),
+                      "calib": make_scorer(calib, greater_is_better=False)},
              "class": {"auc": make_scorer(hms_metrics.auc, greater_is_better=True, needs_proba=True),
                        "acc": make_scorer(hms_metrics.acc, greater_is_better=True)},
              "multiclass": {"auc": make_scorer(hms_metrics.auc, greater_is_better=True, needs_proba=True),
