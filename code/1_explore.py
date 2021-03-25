@@ -7,7 +7,7 @@ from initialize import *
 # import os; sys.path.append(os.getcwd() + "\\code")  # not needed if code is marked as "source" in pycharm
 
 # Plot and show directly or not
-plot = True
+plot = False
 %matplotlib Agg
 #plt.ioff(); matplotlib.use('Agg')
 #%matplotlib inline
@@ -65,8 +65,9 @@ df_orig = (pd.read_csv(dataloc + "hour.csv", parse_dates=["dteday"])
 
 # Create some artifacts
 df_orig["high_card"] = df_orig["hum"].astype('str')  # high cardinality categorical variable
-df_orig["hum"] = df_orig["hum"].where(np.random.random_sample(len(df_orig)) > 0.1, other=np.nan)  # some missings
+#df_orig["hum"] = df_orig["hum"].where(np.random.random_sample(len(df_orig)) > 0.1, other=np.nan)  # some missings
 df_orig["weathersit"] = df_orig["weathersit"].where(df_orig["weathersit"] != "heavy rain", np.nan)
+df_orig["windspeed"] = df_orig["windspeed"].where(df_orig["windspeed"] != 0, other=np.nan)  # some missings
 
 # Create artificial targets
 df_orig["cnt_regr"] = np.log(df_orig["cnt"] + 1)
@@ -173,8 +174,22 @@ if len(tolog):
 
 
 # --- Final variable information ---------------------------------------------------------------------------------------
+'''
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.utils import type_of_target
+from pandas.api.types import is_numeric_dtype
+split_index = PredefinedSplit(df["fold"].map({"train": -1,"util": -1, "test": 0}).values)
+split_shuffle = ShuffleSplit(1, 0.2)
 
-
+feature = nume[0]
+cross_val_score(estimator=(LinearRegression() if type_of_target(df["cnt_" + type]) == "continous" else 
+                           LogisticRegression()),
+                X=(OneHotEncoder().fit_transform(df[[feature]]) if is_numeric_dtype(df[feature]) else
+                   KBinsDiscretizer().fit_transform(df[[feature]])),
+                y=df["cnt_" + type],
+                cv=split_index,
+                scoring=d_scoring["multiclass"]["auc"])
+'''
 for type in types:
 
     # Univariate variable importance
@@ -380,7 +395,7 @@ setdiff(df.columns.values.tolist(), all_features)
 
 # --- Remove burned data -----------------------------------------------------------------------------------------------
 
-df = df.query("fold != 'util'").reset_index(drop=True)
+#df = df.query("fold != 'util'").reset_index(drop=True)
 
 
 # --- Save image -------------------------------------------------------------------------------------------------------
