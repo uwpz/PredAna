@@ -8,7 +8,7 @@ from initialize import *
 
 # Specific libraries
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor  # , GradientBoostingClassifier
-from sklearn.linear_model import SGDClassifier, SGDRegressor, LogisticRegression  # , ElasticNet
+from sklearn.linear_model import SGDClassifier, SGDRegressor, LogisticRegression, ElasticNet
 from keras.models import Sequential
 from keras.layers import Dense, BatchNormalization, Dropout
 from keras.regularizers import l2
@@ -110,6 +110,22 @@ if TYPE in ["class", "multiclass"]:
                 df_tune["cnt_" + TYPE]))
     (hms_plot.ValidationPlotter(x_var="C", show_gen_gap=True)
      .plot(fit.cv_results_, metric="spear" if TYPE=="regr" else "auc"))
+else:
+    fit = (GridSearchCV(ElasticNet(),
+                        {"alpha": [2 ** x for x in range(-8, -20, -2)],
+                         "l1_ratio": [0, 1]},
+                        cv=split_my1fold_cv.split(df_tune),
+                        refit=False,
+                        scoring=d_scoring[TYPE],
+                        return_train_score=True,
+                        n_jobs=n_jobs)
+           .fit(hms_preproc.MatrixConverter(to_sparse=True)
+                #.fit_transform(df_tune[np.append(nume_binned, cate_binned)]),
+                .fit_transform(df_tune[np.append(nume_standard, cate_standard)]),
+                #.fit_transform(df_tune[np.append(nume_encoded, cate_encoded)]),
+                df_tune["cnt_" + TYPE]))
+    (hms_plot.ValidationPlotter(x_var="alpha", color_var="l1_ratio", show_gen_gap=True)
+    .plot(fit.cv_results_, metric="spear" if TYPE == "regr" else "auc"))
 # -> keep l1_ratio=1 to have a full Lasso
 
 
