@@ -17,7 +17,7 @@ from keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
 #  from sklearn.tree import DecisionTreeRegressor, plot_tree , export_graphviz
 
 # Main parameter
-TYPE = "class"
+TYPE = "regr"
 
 # Specific parameters
 n_jobs = 4
@@ -30,7 +30,8 @@ for key, val in d_pick.items():
     exec(key + "= val")
     
 # Adapt targets
-df["cnt_class"] = df["cnt_class"].str.slice(0,1).astype("int")
+df["cnt_class"] = df["cnt_class"].str.slice(0, 1).astype("int")
+df["cnt_multiclass"] = df["cnt_multiclass"].str.slice(0, 1).astype("int")
 
 # Scale "nume_enocded" features for DL (Tree-based are not influenced by this Trafo)
 df[nume_encoded] = MinMaxScaler().fit_transform(df[nume_encoded])
@@ -44,7 +45,7 @@ df[nume_encoded].describe()
 # --- Sample data ------------------------------------------------------------------------------------------------------
 
 # Undersample only training data (take all but n_maxpersample at most)
-under_samp = Undersample(n_max_per_level=3000)
+under_samp = Undersample(n_max_per_level=3000000000)
 df_tmp = under_samp.fit_transform(df.query("fold == 'train'").reset_index(drop=True),
                                   target="cnt_class")
 b_all = under_samp.b_all
@@ -76,7 +77,7 @@ i_test
 
 
 # --- Fits -----------------------------------------------------------------------------------------------------------
-
+#%%
 # Lasso / Elastic Net
 fit = (GridSearchCV(SGDRegressor(penalty="ElasticNet", warm_start=True) if TYPE == "regr" else
                     SGDClassifier(loss="log", penalty="ElasticNet", warm_start=True),  # , tol=1e-2
@@ -86,16 +87,16 @@ fit = (GridSearchCV(SGDRegressor(penalty="ElasticNet", warm_start=True) if TYPE 
                     refit=False,
                     scoring=d_scoring[TYPE],
                     return_train_score=True,
-                    n_jobs=n_jobs)
+                    n_jobs=1)
        .fit(hms_preproc.MatrixConverter(to_sparse=True)
             .fit_transform(df_tune[np.append(nume_binned, cate_binned)]),
             #.fit_transform(df_tune[np.append(nume_standard, cate_standard)]),
             #.fit_transform(df_tune[np.append(nume_encoded, cate_encoded)]),
             df_tune["cnt_" + TYPE]))
 (hms_plot.ValidationPlotter(x_var="alpha", color_var="l1_ratio", show_gen_gap=True)
- .plot(fit.cv_results_, metric="spear" if TYPE == "regr" else "auc"))
+ .plot(fit.cv_results_, metric="myrmse" if TYPE == "regr" else "auc"))
 #pd.DataFrame(fit.cv_results_)
-
+#%%
 if TYPE in ["class", "multiclass"]:
     fit = (GridSearchCV(LogisticRegression(penalty="l1", fit_intercept=True, solver="liblinear"),
                         {"C": [2 ** x for x in range(2, -5, -1)]},
@@ -115,7 +116,7 @@ if TYPE in ["class", "multiclass"]:
 # Random Forest
 fit = (GridSearchCV(RandomForestRegressor() if TYPE == "regr" else 
                     RandomForestClassifier(),
-                    {"n_estimators": [10, 20],
+                    {"n_estimators": [10, 20, 100],
                      "max_features": [x for x in range(1, nume_standard.size + cate_standard.size, 5)]},
                     cv=split_my1fold_cv.split(df_tune),
                     refit=False,
@@ -128,7 +129,7 @@ fit = (GridSearchCV(RandomForestRegressor() if TYPE == "regr" else
             df_tune["cnt_" + TYPE]))
 (hms_plot.ValidationPlotter(x_var="n_estimators", color_var="max_features",
                             show_gen_gap=True)
- .plot(fit.cv_results_, metric="spear" if TYPE == "regr" else "auc"))
+ .plot(fit.cv_results_, metric="rmse" if TYPE == "regr" else "auc"))
 # -> keep around the recommended values: max_features = floor(sqrt(length(features)))
 
 
@@ -136,7 +137,7 @@ fit = (GridSearchCV(RandomForestRegressor() if TYPE == "regr" else
 start = time.time()
 fit = (GridSearchCV_xlgb(xgb.XGBRegressor(verbosity=0) if TYPE == "regr" else 
                          xgb.XGBClassifier(verbosity=0),
-                         {"n_estimators": [x for x in range(100, 4100, 500)], "learning_rate": [0.01],
+                         {"n_estimators": [x for x in range(600, 4100, 500)], "learning_rate": [0.01],
                           "max_depth": [3, 6], "min_child_weight": [5]},
                          cv=split_my1fold_cv.split(df_tune),
                          refit=False,
@@ -144,14 +145,14 @@ fit = (GridSearchCV_xlgb(xgb.XGBRegressor(verbosity=0) if TYPE == "regr" else
                          return_train_score=True,
                          n_jobs=n_jobs)
        .fit((hms_preproc.MatrixConverter(to_sparse=True)
-            #.fit_transform(df_tune[np.append(nume_standard, cate_standard)])),          
+            .fit_transform(df_tune[np.append(nume_standard, cate_standard)])),          
             #.fit_transform(df_tune[np.append(nume_binned, cate_binned)])),          
-            .fit_transform(df_tune[np.append(nume_encoded, cate_encoded)])),
+            #.fit_transform(df_tune[np.append(nume_encoded, cate_encoded)])),
             df_tune["cnt_" + TYPE]))
 print(time.time() - start)
 (hms_plot.ValidationPlotter(x_var="n_estimators", color_var="max_depth", column_var="min_child_weight",
                             show_gen_gap=True)
- .plot(fit.cv_results_, metric="spear" if TYPE == "regr" else "auc"))
+ .plot(fit.cv_results_, metric="rmse" if TYPE == "regr" else "auc"))
 # -> keep around the recommended values: max_depth = 6, shrinkage = 0.01, n.minobsinnode = 10
 
 
@@ -324,13 +325,14 @@ plot_modelcomp(df_modelcomp_result.rename(columns={"index": "run", "test_" + met
 
 # Basic data sampling
 df_lc = df_tune.copy()
+df_lc = df_lc.sample(frac=1)
 
 # Calc learning curve
 n_train, score_train, score_test, time_train, time_test = learning_curve(
     estimator=GridSearchCV_xlgb(
         xgb.XGBRegressor(verbosity=0) if TYPE == "regr" else 
         xgb.XGBClassifier(verbosity=0),
-        {"n_estimators": [x for x in range(2000, 2001, 1)], "learning_rate": [0.01],
+        {"n_estimators": [2000], "learning_rate": [0.01],
          "max_depth": [3], "min_child_weight": [5]},
         cv=ShuffleSplit(1, 0.2, random_state=999),  # just 1-fold for tuning
         refit="spear" if TYPE == "regr" else "auc",
@@ -340,7 +342,7 @@ n_train, score_train, score_test, time_train, time_test = learning_curve(
     X=hms_preproc.MatrixConverter(to_sparse=True).fit_transform(df_lc[np.append(nume_standard, cate_standard)]),
     y=df_lc["cnt_" + TYPE],
     train_sizes=np.arange(0.1, 1.1, 0.2),
-    cv=split_my1fold_cv.split(df_lc),
+    cv=split_5fold.split(df_lc),
     scoring=d_scoring[TYPE]["spear" if TYPE == "regr" else "auc"],
     return_times=True,
     n_jobs=n_jobs)

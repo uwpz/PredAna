@@ -7,12 +7,12 @@ from initialize import *
 # import os; sys.path.append(os.getcwd() + "\\code")  # not needed if code is marked as "source" in pycharm
 
 # Plot and show directly or not
-plot = False
-%matplotlib
-plt.ioff()
-matplotlib.use('Agg')
+plot = True
+%matplotlib Agg
+#plt.ioff(); matplotlib.use('Agg')
 #%matplotlib inline
 #plt.ion(); matplotlib.use('TkAgg')
+plt.plot(1,1)
 
 # Specific parameters (CLASS is default)
 types = ["regr", "class", "multiclass"]
@@ -69,7 +69,7 @@ df_orig["hum"] = df_orig["hum"].where(np.random.random_sample(len(df_orig)) > 0.
 df_orig["weathersit"] = df_orig["weathersit"].where(df_orig["weathersit"] != "heavy rain", np.nan)
 
 # Create artificial targets
-df_orig["cnt_regr"] = np.log(df_orig["cnt"])
+df_orig["cnt_regr"] = np.log(df_orig["cnt"] + 1)
 df_orig["cnt_class"] = pd.qcut(df_orig["cnt"], q=[0, 0.8, 1], labels=["0_low", "1_high"]).astype("object")
 df_orig["cnt_multiclass"] = pd.qcut(df_orig["cnt"], q=[0, 0.8, 0.95, 1],
                                     labels=["0_low", "1_high", "2_very_high"]).astype("object")
@@ -352,9 +352,9 @@ save_plot_grids_to_pdf(plot_grids, plotloc + "tmp.pdf")
 # --- Adapt target -----------------------------------------------------------------------------------------------------
 
 # Switch target to numeric in case of multiclass
-tmp = LabelEncoder()
-df["cnt_multiclass"] = tmp.fit_transform(df["cnt_multiclass"])
-target_labels = tmp.classes_
+#tmp = LabelEncoder()
+#df["cnt_multiclass"] = tmp.fit_transform(df["cnt_multiclass"])
+#target_labels = tmp.classes_
 #CLASS:    target_labels = target_name
 
 
