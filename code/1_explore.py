@@ -3,7 +3,9 @@
 # ######################################################################################################################
 
 # General libraries, parameters and functions
-from initialize import *
+import initialize as my
+#my.create_values_df
+exec(open('initialize.py').read())
 # import os; sys.path.append(os.getcwd() + "\\code")  # not needed if code is marked as "source" in pycharm
 
 # Plot and show directly or not
@@ -74,6 +76,7 @@ df_orig["cnt_regr"] = np.log(df_orig["cnt"] + 1)
 df_orig["cnt_class"] = pd.qcut(df_orig["cnt"], q=[0, 0.8, 1], labels=["0_low", "1_high"]).astype("object")
 df_orig["cnt_multiclass"] = pd.qcut(df_orig["cnt"], q=[0, 0.8, 0.95, 1],
                                     labels=["0_low", "1_high", "2_very_high"]).astype("object")
+
 
 '''
 # Check some stuff
@@ -174,22 +177,57 @@ if len(tolog):
 
 
 # --- Final variable information ---------------------------------------------------------------------------------------
-'''
+
+#import importlib
+#importlib.reload(my)
+
+
 from sklearn.linear_model import LinearRegression, LogisticRegression
-from sklearn.utils import type_of_target
+from sklearn.utils.multiclass import type_of_target
+from sklearn.model_selection import cross_val_score
 from pandas.api.types import is_numeric_dtype
 split_index = PredefinedSplit(df["fold"].map({"train": -1,"util": -1, "test": 0}).values)
 split_shuffle = ShuffleSplit(1, 0.2)
+split_my1fold_cv = TrainTestSep(1)
+#%%
+split_insample = my.InSample()
+split = split_insample.split(df)
+i_train, i_test = next(split)
+#%%
 
-feature = nume[0]
-cross_val_score(estimator=(LinearRegression() if type_of_target(df["cnt_" + type]) == "continous" else 
-                           LogisticRegression()),
-                X=(OneHotEncoder().fit_transform(df[[feature]]) if is_numeric_dtype(df[feature]) else
-                   KBinsDiscretizer().fit_transform(df[[feature]])),
-                y=df["cnt_" + type],
-                cv=split_index,
-                scoring=d_scoring["multiclass"]["auc"])
-'''
+
+
+#%%
+
+    features = df[nume]
+    target = df["cnt_" + type]
+    split = split_insample
+    
+def calc_varimp(features, target, splitter):    
+
+    target_type = dict(continuous="regr", binary="class",
+                       multiclass="multiclass")[type_of_target(target)]
+    print(target_type)
+    metric = "spear" if target_type == "regr" else "auc"
+    print(metric)
+    
+    varimp = dict()
+    for col in features.columns.values:
+        varimp[col] = cross_val_score(estimator=(LinearRegression() if target_type == "regr" else
+                                                 LogisticRegression()),
+                            X=(KBinsDiscretizer().fit_transform(features[[col]])if is_numeric_dtype(features[col]) else
+                               OneHotEncoder().fit_transform(features[[col]])),
+                            y=target,
+                            cv=splitter,
+                            scoring=d_scoring[target_type][metric])
+    return(varimp)
+ 
+
+calc_varimp(df[nume + "_BINNED"], df["cnt_" + type], split_shuffle)
+        
+#%%
+
+
 for type in types:
 
     # Univariate variable importance

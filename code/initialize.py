@@ -410,7 +410,7 @@ class TrainTestSep:
         self.fold_var = fold_var
         self.random_state = random_state
 
-    def split(self, df):
+    def split(self, df, *args):
         i_df = np.arange(len(df))
         np.random.seed(self.random_state)
         np.random.shuffle(i_df)
@@ -438,8 +438,29 @@ class TrainTestSep:
                 i_test_yield = None
             yield i_train_yield, i_test_yield
 
-    def get_n_splits(self):
+    def get_n_splits(self, *args):
         return self.n_splits
+    
+# Special splitter: training fold only from training data, test fold only from test data
+
+
+class InSample:
+    def __init__(self, shuffle=True, random_state=42):
+        self.shuffle = shuffle
+        self.random_state = random_state
+
+    def split(self, df, *args):
+        i_df = np.arange(df.shape[0])
+        print("blub")
+        if self.shuffle:
+            np.random.seed(self.random_state)
+            np.random.shuffle(i_df)
+        i_train_yield = i_df
+        i_test_yield = i_df
+        yield i_train_yield, i_test_yield
+
+    def get_n_splits(self, *args):
+        return 1
 
 
 # Incremental n_estimators GridSearch
