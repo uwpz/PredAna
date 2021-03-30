@@ -2,11 +2,23 @@
 #  Initialize: Packages, functions, parameters, data-loading
 # ######################################################################################################################
 
-# General libraries, parameters and functions
-from initialize import *
-# sys.path.append(os.getcwd() + "\\code")  # not needed if code is marked as "source" in pycharm
+# --- Packages --------------------------------------------------------------------------
 
-# Specific libraries
+# General
+import os  # sys.path.append(os.getcwd())
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt  # ,matplotlib
+import pickle
+import importlib  # importlib.reload(my)
+import time
+
+# Special
+import hmsPM.plotting as hms_plot
+from sklearn.model_selection import KFold, ShuffleSplit, PredefinedSplit
+from sklearn.model_selection import GridSearchCV
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor  # , GradientBoostingClassifier
 from sklearn.linear_model import SGDClassifier, SGDRegressor, LogisticRegression, ElasticNet
 from keras.models import Sequential
@@ -16,36 +28,46 @@ from keras import optimizers
 from keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
 #  from sklearn.tree import DecisionTreeRegressor, plot_tree , export_graphviz
 
+# Custom functions and classes
+import my_tools as my
+
+
+# --- Parameter --------------------------------------------------------------------------
+
 # Main parameter
-TYPE = "regr"
+target_type = "class"
 
 # Specific parameters
 n_jobs = 4
 
+# Locations
+dataloc = "../data/"
+plotloc = "../output/"
+
 # Load results from exploration
-df = nume_standard = cate_standard = nume_binned = cate_binned = nume_encoded = cate_encoded = None
+df = nume_standard = cate_standard = cate_binned = nume_encoded = None
 with open(dataloc + "1_explore.pkl", "rb") as file:
     d_pick = pickle.load(file)
 for key, val in d_pick.items():
     exec(key + "= val")
-    
+
 # Adapt targets
 df["cnt_class"] = df["cnt_class"].str.slice(0, 1).astype("int")
 df["cnt_multiclass"] = df["cnt_multiclass"].str.slice(0, 1).astype("int")
 
 # Scale "nume_enocded" features for DL (Tree-based are not influenced by this Trafo)
-df[nume_encoded] = MinMaxScaler().fit_transform(df[nume_encoded])
-df[nume_encoded].describe()
+# df[nume_encoded] = MinMaxScaler().fit_transform(df[nume_encoded])
+# df[nume_encoded].describe()
 
 
 # ######################################################################################################################
 # # Test an algorithm (and determine parameter grid)
 # ######################################################################################################################
 
-# --- Sample data ------------------------------------------------------------------------------------------------------
+# --- Derive data ------------------------------------------------------------------------------------------------------
 
 # Undersample only training data (take all but n_maxpersample at most)
-under_samp = Undersample(n_max_per_level=3000000000)
+under_samp = my.Undersample(n_max_per_level=3000)
 df_tmp = under_samp.fit_transform(df.query("fold == 'train'").reset_index(drop=True),
                                   target="cnt_class")
 b_all = under_samp.b_all
@@ -55,14 +77,21 @@ df_tune = (pd.concat([df_tmp, df.query("fold == 'test'").reset_index(drop=True)]
            .reset_index(drop=True))
 df_tune.groupby("fold")["cnt_class"].describe()
 
+# Derive design matrices
+X_standard = (ColumnTransformer([('nume', MinMaxScaler(), nume_standard),
+                                 ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"), cate_standard)])
+              .fit_transform(df_tune[np.append(nume_standard, cate_standard)]))
+X_binned = OneHotEncoder(sparse=False, handle_unknown="ignore").fit_transform(df_tune[cate_binned])
+X_encoded = MinMaxScaler().fit_transform(df_tune[nume_encoded])
+
 
 # --- Define some splits -------------------------------------------------------------------------------------------
 
 split_index = PredefinedSplit(df_tune["fold"].map({"train": -1, "test": 0}).values)
 split_5fold = KFold(5, shuffle=True, random_state=42)
-split_my1fold_cv = TrainTestSep(1)
-split_my5fold_cv = TrainTestSep(5)
-split_my5fold_boot = TrainTestSep(5, "bootstrap")
+split_my1fold_cv = my.TrainTestSep(1)
+split_my5fold_cv = my.TrainTestSep(5)
+split_my5fold_boot = my.TrainTestSep(5, "bootstrap")
 
 '''
 # Test a split
@@ -77,27 +106,26 @@ i_test
 
 
 # --- Fits -----------------------------------------------------------------------------------------------------------
-#%%
+
 # Lasso / Elastic Net
-fit = (GridSearchCV(SGDRegressor(penalty="ElasticNet", warm_start=True) if TYPE == "regr" else
+fit = (GridSearchCV(SGDRegressor(penalty="ElasticNet", warm_start=True) if target_type == "regr" else
                     SGDClassifier(loss="log", penalty="ElasticNet", warm_start=True),  # , tol=1e-2
                     {"alpha": [2 ** x for x in range(-8, -20, -2)],
                      "l1_ratio": [0, 1]},
                     cv=split_my1fold_cv.split(df_tune),
                     refit=False,
-                    scoring=d_scoring[TYPE],
+                    scoring=my.d_scoring[target_type],
                     return_train_score=True,
                     n_jobs=1)
-       .fit(hms_preproc.MatrixConverter(to_sparse=True)
-            .fit_transform(df_tune[np.append(nume_binned, cate_binned)]),
-            #.fit_transform(df_tune[np.append(nume_standard, cate_standard)]),
-            #.fit_transform(df_tune[np.append(nume_encoded, cate_encoded)]),
-            df_tune["cnt_" + TYPE]))
+       .fit(X=X_binned,
+            y=df_tune["cnt_" + target_type]))
 (hms_plot.ValidationPlotter(x_var="alpha", color_var="l1_ratio", show_gen_gap=True)
- .plot(fit.cv_results_, metric="myrmse" if TYPE == "regr" else "auc"))
-#pd.DataFrame(fit.cv_results_)
-#%%
-if TYPE in ["class", "multiclass"]:
+ .plot(fit.cv_results_, metric="myrmse" if target_type == "regr" else "auc"))
+# pd.DataFrame(fit.cv_results_)
+
+
+# %%
+if target_type in ["class", "multiclass"]:
     fit = (GridSearchCV(LogisticRegression(penalty="l1", fit_intercept=True, solver="liblinear"),
                         {"C": [2 ** x for x in range(2, -5, -1)]},
                         cv=split_my1fold_cv.split(df_tune),
@@ -120,9 +148,9 @@ else:
                         return_train_score=True,
                         n_jobs=n_jobs)
            .fit(hms_preproc.MatrixConverter(to_sparse=True)
-                #.fit_transform(df_tune[np.append(nume_binned, cate_binned)]),
+                # .fit_transform(df_tune[np.append(nume_binned, cate_binned)]),
                 .fit_transform(df_tune[np.append(nume_standard, cate_standard)]),
-                #.fit_transform(df_tune[np.append(nume_encoded, cate_encoded)]),
+                # .fit_transform(df_tune[np.append(nume_encoded, cate_encoded)]),
                 df_tune["cnt_" + TYPE]))
     (hms_plot.ValidationPlotter(x_var="alpha", color_var="l1_ratio", show_gen_gap=True)
     .plot(fit.cv_results_, metric="spear" if TYPE == "regr" else "auc"))
@@ -162,8 +190,8 @@ fit = (GridSearchCV_xlgb(xgb.XGBRegressor(verbosity=0) if TYPE == "regr" else
                          n_jobs=n_jobs)
        .fit((hms_preproc.MatrixConverter(to_sparse=True)
             .fit_transform(df_tune[np.append(nume_standard, cate_standard)])),          
-            #.fit_transform(df_tune[np.append(nume_binned, cate_binned)])),          
-            #.fit_transform(df_tune[np.append(nume_encoded, cate_encoded)])),
+            # .fit_transform(df_tune[np.append(nume_binned, cate_binned)])),          
+            # .fit_transform(df_tune[np.append(nume_encoded, cate_encoded)])),
             df_tune["cnt_" + TYPE]))
 print(time.time() - start)
 (hms_plot.ValidationPlotter(x_var="n_estimators", color_var="max_depth", column_var="min_child_weight",
@@ -185,9 +213,9 @@ fit = (GridSearchCV_xlgb(lgbm.LGBMRegressor() if TYPE == "regr" else
                          n_jobs=1)
        .fit(df_tune[nume_encoded], 
             categorical_feature=[x for x in nume_encoded.tolist() if "_ENCODED" in x],
-       #.fit((hms_preproc.MatrixConverter(to_sparse=True)
-            #.fit_transform(df_tune[np.append(nume_standard, cate_standard)])),
-            #.fit_transform(df_tune[np.append(nume_encoded, cate_encoded)])),
+       # .fit((hms_preproc.MatrixConverter(to_sparse=True)
+            # .fit_transform(df_tune[np.append(nume_standard, cate_standard)])),
+            # .fit_transform(df_tune[np.append(nume_encoded, cate_encoded)])),
             y = df_tune["cnt_" + TYPE]))
 print(time.time() - start)
 (hms_plot.ValidationPlotter(x_var="n_estimators", color_var="num_leaves", column_var="min_child_samples",
@@ -239,13 +267,13 @@ def keras_model(input_dim, output_dim, target_type,
 # Fit
 
 fit = (GridSearchCV(KerasRegressor(build_fn=keras_model,
-                                   #input_dim=nume_encoded.size,
+                                   # input_dim=nume_encoded.size,
                                    input_dim=69,
                                    output_dim=1,
                                    target_type=TYPE,
                                    verbose=0) if TYPE == "regr" else
                     KerasClassifier(build_fn=keras_model,
-                                    #input_dim=nume_encoded.size,
+                                    # input_dim=nume_encoded.size,
                                     input_dim=69,
                                     output_dim=1 if TYPE == "class" else target_labels.size,
                                     target_type=TYPE,
