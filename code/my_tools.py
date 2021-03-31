@@ -190,6 +190,17 @@ def calc_varimp(features, target, splitter):
 
 # --- Model Comparison -----------------------------------------------------------------------------------------------------
 
+# Undersample
+def undersample(df, target, n_max_per_level, random_state=42):
+    b_all = df[target].value_counts().values / len(df)
+    df_under = (df.groupby(target).apply(lambda x: x.sample(min(n_max_per_level, x.shape[0]),
+                                                            random_state=random_state))
+                .reset_index(drop=True)
+                .sample(frac=1).reset_index(drop=True))  # shuffle
+    b_sample = df_under[target].value_counts().values / len(df_under)
+    return b_sample, b_all, df_under
+
+
 # Plot model comparison
 def plot_modelcomp(df_modelcomp_result, modelvar="model", runvar="run", scorevar="test_score", pdf=None):
     fig, ax = plt.subplots(1, 1)
@@ -551,32 +562,6 @@ class ImputeMode(BaseEstimator, TransformerMixin):
     def transform(self, X):
         X = pd.DataFrame(X).fillna(self._impute_values).values
         return X
-
-
-# Undersample
-class Undersample(BaseEstimator, TransformerMixin):
-    def __init__(self, n_max_per_level, random_state=42):
-        self.n_max_per_level = n_max_per_level
-        self.random_state = random_state
-        self.b_sample = None
-        self.b_all = None
-
-    def fit(self, *_):
-        return self
-
-    # noinspection PyMethodMayBeStatic
-    def transform(self, df):
-        return df
-
-    def fit_transform(self, df, y=None, target="target"):
-        # pdb.set_trace()
-        self.b_all = df[target].value_counts().values / len(df)
-        df = df.groupby(target).apply(lambda x: x.sample(min(self.n_max_per_level, x.shape[0]),
-                                                         random_state=self.random_state)) \
-            .reset_index(drop=True) \
-            .sample(frac=1).reset_index(drop=True)
-        self.b_sample = df[target].value_counts().values / len(df)
-        return df
 
 
 # Special splitter: training fold only from training data, test fold only from test data
