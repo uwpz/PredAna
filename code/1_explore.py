@@ -1,5 +1,5 @@
 ########################################################################################################################
-# Initialize: Packages, functions, parameters
+# Initialize: Packages, functions, parameter
 ########################################################################################################################
 
 # --- Packages --------------------------------------------------------------------------
@@ -35,14 +35,14 @@ plotloc = "../output/"
 # Plot 
 plot = True
 # Show directly or not
-%matplotlib Agg  
+#%matplotlib Agg 
 plt.ioff(); matplotlib.use('Agg')  # stop standard
 #%matplotlib inline  
 #plt.ion(); matplotlib.use('TkAgg')  # start standard
 #plt.plot(1, 1)
 
 # Specific parameters 
-target_types = ["regr", "class", "multiclass"]
+TARGET_TYPES = ["REGR", "CLASS", "MULTICLASS"]
 
 
 
@@ -73,9 +73,9 @@ df_orig["weathersit"] = df_orig["weathersit"].where(df_orig["weathersit"] != "he
 df_orig["windspeed"] = df_orig["windspeed"].where(df_orig["windspeed"] != 0, other=np.nan)  # some missings
 
 # Create artificial targets
-df_orig["cnt_regr"] = np.log(df_orig["cnt"] + 1)
-df_orig["cnt_class"] = pd.qcut(df_orig["cnt"], q=[0, 0.8, 1], labels=["0_low", "1_high"]).astype("object")
-df_orig["cnt_multiclass"] = pd.qcut(df_orig["cnt"], q=[0, 0.8, 0.95, 1],
+df_orig["cnt_REGR"] = np.log(df_orig["cnt"] + 1)
+df_orig["cnt_CLASS"] = pd.qcut(df_orig["cnt"], q=[0, 0.8, 1], labels=["0_low", "1_high"]).astype("object")
+df_orig["cnt_MULTICLASS"] = pd.qcut(df_orig["cnt"], q=[0, 0.8, 0.95, 1],
                                     labels=["0_low", "1_high", "2_very_high"]).astype("object")
 
 
@@ -160,13 +160,13 @@ nume = my.diff(nume, remove)  # adapt metadata
 # Check for outliers and skewness
 df[nume].describe()
 start = time.time()
-for target_type in target_types:
+for TARGET_TYPE in TARGET_TYPES:
     if plot:
         distr_nume_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n_cols=3, w=18, h=12,
                                                                      show_regplot=True)
                             .plot(features=df[nume],
-                                  target=df["cnt_" + target_type],
-                                  file_path=plotloc + "distr_nume__" + target_type + ".pdf"))
+                                  target=df["cnt_" + TARGET_TYPE],
+                                  file_path=plotloc + "distr_nume__" + TARGET_TYPE + ".pdf"))
     print(time.time() - start)
 
 # Winsorize (hint: plot again before deciding for log-trafo)
@@ -182,21 +182,21 @@ if len(tolog):
 
 # --- Final variable information ---------------------------------------------------------------------------------------
 
-for target_type in target_types:
+for TARGET_TYPE in TARGET_TYPES:
     
-    # Univariate variable importance
-    varimps_nume = my.calc_varimp(df[np.append(nume, nume + "_BINNED")], df["cnt_" + target_type],
-                                  ShuffleSplit(n_splits=1, test_size=0.2, random_state=42))
-    print(varimps_nume)
+    # Univariate variable performances
+    varperf_nume = my.variable_performance(df[np.append(nume, nume + "_BINNED")], df["cnt_" + TARGET_TYPE],
+                                           ShuffleSplit(n_splits=1, test_size=0.2, random_state=42))
+    print(varperf_nume)
     
     # Plot
     if plot:
         distr_nume_plots = (hms_plot.MultiFeatureDistributionPlotter(show_regplot=True,
                                                                      n_rows=2, n_cols=2, w=12, h=8)
                             .plot(features=df[np.column_stack((nume, nume + "_BINNED")).ravel()],
-                                  target=df["cnt_" + target_type],
-                                  varimps=varimps_nume.round(2),
-                                  file_path=plotloc + "distr_nume_final__" + target_type + ".pdf"))
+                                  target=df["cnt_" + TARGET_TYPE],
+                                  varimps=varperf_nume.round(2),
+                                  file_path=plotloc + "distr_nume_final__" + TARGET_TYPE + ".pdf"))
 
 
 # --- Removing variables -----------------------------------------------------------------------------------------------
@@ -218,18 +218,18 @@ nume = my.diff(nume, remove)
 # Hint: In case of having a detailed date variable this can be used as regression target here as well!
 
 # Univariate variable importance (again ONLY for non-missing observations!)
-varimps_nume_fold = my.calc_varimp(df[nume], df["fold"],
-                                   my.InSampleSplit()).round(2)
+varperf_nume_fold = my.variable_performance(df[nume], df["fold"],
+                                            my.InSampleSplit()).round(2)
 
 # Plot: only variables with with highest importance
-nume_toprint = varimps_nume_fold[varimps_nume_fold > 0.52].index.values
+nume_toprint = varperf_nume_fold[varperf_nume_fold > 0.52].index.values
 if len(nume_toprint):
     if plot:
         distr_nume_folddep_plots = (hms_plot.MultiFeatureDistributionPlotter(show_regplot=True,
                                                                              n_rows=2, n_cols=3, w=18, h=12)
                                     .plot(features=df[nume_toprint],
                                           target=df["fold"],
-                                          varimps=varimps_nume_fold,
+                                          varimps=varperf_nume_fold,
                                           file_path=plotloc + "distr_nume_folddep.pdf"))
 
 
@@ -273,7 +273,7 @@ df[yesno + "_ENCODED"] = df[yesno].apply(lambda x: x.map({"No": 0, "Yes": 1}))  
 # Create target-encoded features for nominal variables
 nomi = my.diff(cate, np.concatenate([ordi, yesno]))
 df_util = df.query("fold == 'util'").reset_index(drop=True)
-df[nomi + "_ENCODED"] = target_encoder.TargetEncoder().fit(df_util[nomi], df_util["cnt_regr"]).transform(df[nomi])
+df[nomi + "_ENCODED"] = target_encoder.TargetEncoder().fit(df_util[nomi], df_util["cnt_REGR"]).transform(df[nomi])
 #df = df.query("fold != 'util'").reset_index(drop=True)  # remove utility data
 
 # Get "too many members" columns and lump levels
@@ -289,20 +289,20 @@ if len(toomany):
 
 # --- Final variable information ---------------------------------------------------------------------------------------
 
-for target_type in target_types:
+for TARGET_TYPE in TARGET_TYPES:
 
     # Univariate variable importance
-    varimps_cate = my.calc_varimp(df[np.append(cate, ["MISS_" + miss])], df["cnt_" + target_type],
-                                  ShuffleSplit(n_splits=1, test_size=0.2, random_state=42)).round(2)
-    print(varimps_cate)
+    varperf_cate = my.variable_performance(df[np.append(cate, ["MISS_" + miss])], df["cnt_" + TARGET_TYPE],
+                                           ShuffleSplit(n_splits=1, test_size=0.2, random_state=42)).round(2)
+    print(varperf_cate)
 
     # Check
     if plot:
         distr_cate_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n_cols=3, w=18, h=12)
                             .plot(features=df[np.append(cate, ["MISS_" + miss])],
-                                  target=df["cnt_" + target_type],
-                                  varimps=varimps_cate,
-                                  file_path=plotloc + "distr_cate__" + target_type + ".pdf"))
+                                  target=df["cnt_" + TARGET_TYPE],
+                                  varimps=varperf_cate,
+                                  file_path=plotloc + "distr_cate__" + TARGET_TYPE + ".pdf"))
 
 
 # --- Removing variables -----------------------------------------------------------------------------------------------
@@ -321,18 +321,18 @@ corr_cate_plot = (hms_plot.CorrelationPlotter(cutoff=0, w=8, h=6)
 
 # Hint: In case of having a detailed date variable this can be used as regression target here as well!
 # Univariate variable importance (again ONLY for non-missing observations!)
-varimps_cate_fold = my.calc_varimp(df[np.append(cate, ["MISS_" + miss])], df["fold"],
-                                   my.InSampleSplit()).round(2)
+varperf_cate_fold = my.variable_performance(df[np.append(cate, ["MISS_" + miss])], df["fold"],
+                                            my.InSampleSplit()).round(2)
 
 
 # Plot: only variables with with highest importance
-cate_toprint = varimps_cate_fold[varimps_cate_fold > 0.52].index.values
+cate_toprint = varperf_cate_fold[varperf_cate_fold > 0.52].index.values
 if len(nume_toprint):
     if plot:
         distr_cate_folddep_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n_cols=3, w=18, h=12)
                                     .plot(features=df[cate_toprint],
                                           target=df["fold"],
-                                          varimps=varimps_cate_fold,
+                                          varimps=varperf_cate_fold,
                                           file_path=plotloc + "distr_cate_folddep.pdf"))
 
 
@@ -349,7 +349,7 @@ for row in features:
     for col in features:
         if row == col:
             plot_calls.append(PlotFunctionCall(FeatureDistributionPlotter(show_regplot=True).plot,
-                                               kwargs=dict(feature=df[row], target=df["cnt_class"])))
+                                               kwargs=dict(feature=df[row], target=df["cnt_CLASS"])))
         else:
             plot_calls.append(PlotFunctionCall(FeatureDistributionPlotter(show_regplot=True).plot,
                                                kwargs=dict(feature=df[row], target=df[col])))
@@ -364,9 +364,12 @@ save_plot_grids_to_pdf(plot_grids, plotloc + "fancy.pdf")
 
 # --- Adapt target -----------------------------------------------------------------------------------------------------
 
+df["cnt_CLASS_num"] = df["cnt_CLASS"].str.slice(0, 1).astype("int")
+df["cnt_MULTICLASS_num"] = df["cnt_MULTICLASS"].str.slice(0, 1).astype("int")
+
 # Switch target to numeric in case of multiclass
 #tmp = LabelEncoder()
-#df["cnt_multiclass"] = tmp.fit_transform(df["cnt_multiclass"])
+#df["cnt_MULTICLASS"] = tmp.fit_transform(df["cnt_MULTICLASS"])
 #target_labels = tmp.classes_
 #CLASS:    target_labels = target_name
 
@@ -384,7 +387,7 @@ cate_binned = np.append(my.diff(nume + "_BINNED", onebin), cate)
 nume_encoded = np.concatenate([nume, cate + "_ENCODED", "MISS_" + miss + "_ENCODED"])
 
 # Check
-all_features = np.unique(np.concatenate([nume_standard, cate_standard, nume_binned, cate_binned, nume_encoded]))
+all_features = np.unique(np.concatenate([nume_standard, cate_standard, cate_binned, nume_encoded]))
 my.diff(all_features, df.columns.values.tolist())
 my.diff(df.columns.values.tolist(), all_features)
 
