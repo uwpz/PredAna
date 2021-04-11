@@ -133,6 +133,12 @@ df["fold"] = np.where(df.index.isin(df.query("kaggle_fold == 'train'")
 nume = df_meta_sub.loc[df_meta_sub["type"] == "nume", "variable"]
 df[nume] = df[nume].apply(lambda x: pd.to_numeric(x))
 df[nume].describe()
+'''
+a = df[nume].apply(lambda x:plt.plot(x)).iloc[0,:].values
+%matplotlib inline
+a.iloc[0,1]
+plt.plot(1)
+'''
 
 # --- Create nominal variables for all numeric variables (for linear models)  -----------------------------------------
 
@@ -168,6 +174,65 @@ for TARGET_TYPE in TARGET_TYPES:
                                   target=df["cnt_" + TARGET_TYPE],
                                   file_path=plotloc + "distr_nume__" + TARGET_TYPE + ".pdf"))
     print(time.time() - start)
+    
+'''
+%matplotlib inline
+TARGET_TYPE = "CLASS"  
+distr_nume_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n_cols=3, w=18, h=12,
+                                                             show_regplot=True)
+                    .plot(features=df[nume],
+                          target=df["cnt_" + TARGET_TYPE],
+                          file_path=plotloc + "distr_nume__" + TARGET_TYPE + ".pdf"))
+
+page = 0
+old_page = distr_nume_plots[page]
+old_fig = old_page[0]
+old_axes = old_page[1]
+old_ax = old_axes[0,2]
+old_ax.set_title("My New Title")
+old_fig
+old_fig.set_size_inches(6,6)
+old_fig.tight_layout()
+old_fig
+
+old_fig.savefig("blub.pdf")
+
+distr_cate_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n_cols=3, w=18, h=12)
+                            .plot(features=df[np.append(cate, ["MISS_" + miss])],
+                                  target=df["cnt_" + TARGET_TYPE],
+                                  varimps=varperf_cate,
+                                  file_path=plotloc + "distr_cate__" + TARGET_TYPE + ".pdf"))
+
+for page in distr_cate_plots:
+    fig = page[0]
+    axes = page[1]
+    for i, ax in enumerate(axes.flatten()):
+        ax.set_title(ax.get_title().replace("VI", "AUC"))
+        if i >= 0:
+            if ax.get_legend() is not None:           
+                ax.get_legend().remove()
+    #fig.tight_layout()
+hms_plot.save_plot_grids_to_pdf(distr_cate_plots, "blub1.pdf")
+for page in distr_cate_plots:
+    display(page[0])
+
+# DO NOT CHANGE GEOMETRY
+new_fig, new_axes = plt.subplots(3, 2)
+new_ax = new_axes[2,1]
+new_fig.set_size_inches(6, 6)
+new_fig.tight_layout()
+old_ax.change_geometry(*(new_ax.get_geometry()))
+#old_ax._position = new_ax._position
+#old_ax.pchanged()
+new_ax.remove()
+old_ax.figure = new_fig
+new_fig.add_axes(old_ax)
+new_fig
+
+'''
+
+
+
 
 # Winsorize (hint: plot again before deciding for log-trafo)
 df[nume] = my.Winsorize(lower_quantile=0.01, upper_quantile=0.99).fit_transform(df[nume])
@@ -183,10 +248,15 @@ if len(tolog):
 # --- Final variable information ---------------------------------------------------------------------------------------
 
 for TARGET_TYPE in TARGET_TYPES:
+    #TARGET_TYPE = "CLASS"
     
     # Univariate variable performances
     varperf_nume = my.variable_performance(df[np.append(nume, nume + "_BINNED")], df["cnt_" + TARGET_TYPE],
                                            ShuffleSplit(n_splits=1, test_size=0.2, random_state=42))
+
+    df[np.append(nume, nume + "_BINNED")].apply(lambda x: 
+        my.variable_performance_new(x, df["cnt_" + TARGET_TYPE],  
+                                    ShuffleSplit(n_splits=1, test_size=0.2, random_state=42)))
     print(varperf_nume)
     
     # Plot
@@ -339,6 +409,11 @@ if len(nume_toprint):
 '''
 # Fancy!
 
+fig, ax = plt.subplots(1,2)
+ax[1].plot(1,1)
+ax[1].patch.set_facecolor('xkcd:light yellow')
+
+
 from hmsPM.plotting.output import save_plot_grids_to_pdf
 from hmsPM.plotting.distribution import FeatureDistributionPlotter
 from hmsPM.plotting.grid import PlotGridBuilder
@@ -354,6 +429,9 @@ for row in features:
             plot_calls.append(PlotFunctionCall(FeatureDistributionPlotter(show_regplot=True).plot,
                                                kwargs=dict(feature=df[row], target=df[col])))
 plot_grids = PlotGridBuilder(n_rows=len(features), n_cols=len(features), h=60, w=60).build(plot_calls=plot_calls)
+for i in range(len(features)):
+    plot_grids[0][1][i,i].set_facecolor('xkcd:light yellow')
+
 save_plot_grids_to_pdf(plot_grids, plotloc + "fancy.pdf")
 '''
 

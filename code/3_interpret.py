@@ -28,7 +28,7 @@ import xgboost as xgb
 import shap
 
 # Custom functions and classes
-#from . import my_tools
+#from . import blub as bl
 import my_tools as my
 
 
@@ -93,10 +93,9 @@ df_test = df.query("fold == 'test'").reset_index(drop=True)  # .sample(300) #ATT
 df_traintest = pd.concat([df_train, df_test]).reset_index(drop=True)
 
 # Folds for crossvalidation and check
-cv_my5fold = my.TrainTestSep(5, "cv")
-split_my5fold = cv_my5fold.split(df_traintest,
-                            test_fold=(df_traintest["fold"] == "test").values)
-i_train, i_test = next(split_my5fold)
+cv_5foldsep = my.KFoldSep(5)
+split_5foldsep = cv_5foldsep.split(df_traintest, test_fold=(df_traintest["fold"] == "test"))
+i_train, i_test = next(split_5foldsep)
 print("TRAIN-fold:", df_traintest["fold"].iloc[i_train].value_counts(), i_train[:5])
 print("TEST-fold:", df_traintest["fold"].iloc[i_test].value_counts(), i_test[:5])
 

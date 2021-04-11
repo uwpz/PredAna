@@ -13,7 +13,7 @@ import warnings
 from sklearn import model_selection
 
 from sklearn.metrics import make_scorer, roc_auc_score, accuracy_score
-from sklearn.model_selection import cross_val_score, GridSearchCV, check_cv
+from sklearn.model_selection import cross_val_score, GridSearchCV, check_cv, KFold
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.preprocessing import OneHotEncoder, KBinsDiscretizer
 from sklearn.utils.multiclass import type_of_target, unique_labels
@@ -170,7 +170,7 @@ def value_counts(df, topn=5, dtypes=["object"]):
 
 
 # Univariate model performance
-# TODO: Add scorer func.
+# TODO: Remove
 def variable_performance(features, target, splitter):
 
     target_type = dict(continuous="REGR", binary="CLASS", multiclass="MULTICLASS")[type_of_target(target)]
@@ -190,6 +190,25 @@ def variable_performance(features, target, splitter):
             cv=splitter, 
             scoring=d_scoring[target_type][metric]))
     return(pd.Series(varimp))
+
+# TODO: Add scorer func.
+def variable_performance_new(feature, target, splitter):
+
+    target_type = dict(continuous="REGR", binary="CLASS", multiclass="MULTICLASS")[type_of_target(target)]
+    print(target_type)
+    metric = "spear" if target_type == "REGR" else "auc"
+    print(metric)
+
+    df_hlp = pd.DataFrame(feature).assign(target=target).dropna().reset_index(drop=True)
+    numeric_feature = pd.api.types.is_numeric_dtype(df_hlp.iloc[:, [0]])
+    perf = np.mean(cross_val_score(
+        estimator=(LinearRegression() if target_type == "REGR" else LogisticRegression()),
+        X=(KBinsDiscretizer().fit_transform(df_hlp.iloc[:, [0]]) if numeric_feature else 
+           OneHotEncoder().fit_transform(df_hlp.iloc[:, [0]])),
+        y=df_hlp["target"],
+        cv=splitter,
+        scoring=d_scoring[target_type][metric]))
+    return perf
 
 
 # Winsorize
@@ -309,43 +328,14 @@ class TrainTestSep:
         return self.n_splits
     
 
-class TrainTestSepOLD:
-    def __init__(self, n_splits=1, sample_type="cv", fold_var="fold", random_state=42):
-        self.n_splits = n_splits
-        self.sample_type = sample_type
-        self.fold_var = fold_var
-        self.random_state = random_state
+class KFoldSep(KFold):
+    def __init__(self, features, *args, **kwargs):
+        super().__init__(shuffle = True, *args, **kwargs)
 
-    def split(self, df, *args):
-        i_df = np.arange(len(df))
-        np.random.seed(self.random_state)
-        np.random.shuffle(i_df)
-        i_train = i_df[df[self.fold_var].values[i_df] == "train"]
-        i_test = i_df[df[self.fold_var].values[i_df] == "test"]
-        if self.sample_type == "cv":
-            splits_train = np.array_split(i_train, self.n_splits)
-            splits_test = np.array_split(i_test, self.n_splits)
-        else:
-            splits_train = None
-            splits_test = None
-        for i in range(self.n_splits):
-            if self.sample_type == "cv":
-                i_train_yield = np.concatenate(splits_train)
-                if self.n_splits > 1:
-                    i_train_yield = np.setdiff1d(i_train_yield, splits_train[i], assume_unique=True)
-                i_test_yield = splits_test[i]
-            elif self.sample_type == "bootstrap":
-                np.random.seed(self.random_state * (i + 1))
-                i_train_yield = np.random.choice(i_train, len(i_train))
-                np.random.seed(self.random_state * (i + 1))
-                i_test_yield = np.random.choice(i_test, len(i_test))
-            else:
-                i_train_yield = None
-                i_test_yield = None
-            yield i_train_yield, i_test_yield
-
-    def get_n_splits(self, *args):
-        return self.n_splits
+    def split(self, X, y=None, groups=None, test_fold=None):
+        i_test_fold = np.arange(len(X))[test_fold]
+        for i_train, i_test in super().split(X, y, groups):
+            yield i_train[~np.isin(i_train, i_test)], i_test[np.isin(i_test, i_test_fold)]
   
   
 # Splitter: test==train fold, i.e. in-sample selection
@@ -505,9 +495,9 @@ def scale_predictions(yhat, b_sample=None, b_all=None):
         if yhat.ndim == 1:
             flag_1dim = True
             yhat = np.column_stack((1 - yhat, yhat))
-        # tmp = yhat * np.array([1 - b_all, b_all]) / np.array([1 - b_sample, b_sample])
         tmp = (yhat * b_all) / b_sample
         yhat_rescaled = (tmp.T / tmp.sum(axis=1)).T  # transposing is needed for casting
+        #yhat_rescaled = tmp / tmp.sum(axis=1).reshape(len(tmp),1)
     if flag_1dim:
         yhat_rescaled = yhat_rescaled[:, 1]
     return yhat_rescaled
