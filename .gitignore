@@ -1,6 +1,8 @@
 /.vscode
 *.lnk
+*.bat
 #*.pkl
 code/__pycache__
 .ipynb_checkpoints/
 output
+venv

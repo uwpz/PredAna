@@ -2,16 +2,15 @@
 # Packages
 ########################################################################################################################
 
-from sklearn.linear_model import LogisticRegression
-from sklearn.base import BaseEstimator
+# General
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from joblib import Parallel, delayed
 import warnings
-from sklearn import model_selection
 
+# Scikit
 from sklearn.metrics import make_scorer, roc_auc_score, accuracy_score
 from sklearn.model_selection import cross_val_score, GridSearchCV, check_cv, KFold
 from sklearn.linear_model import LinearRegression, LogisticRegression
@@ -20,29 +19,17 @@ from sklearn.utils.multiclass import type_of_target, unique_labels
 from sklearn.utils import _safe_indexing
 from sklearn.base import BaseEstimator, TransformerMixin, clone  # ClassifierMixin
 
+# ML
 import xgboost as xgb
 import lightgbm as lgbm
 from itertools import product  # for GridSearchCV_xlgb
-
-'''
-import os
-import matplotlib
-import time
-from category_encoders import target_encoder
-from sklearn.model_selection import cross_val_score
-from sklearn.model_selection import cross_validate, check_cv
-import shap
-# hmsPM specific
-import hmsPM.calculation as hms_calc
-import hmsPM.preprocessing as hms_preproc
-import hmsPM.plotting as hms_plot
-import hmsPM.metrics as hms_metrics
 
 
 ########################################################################################################################
 # Parameter
 ########################################################################################################################
 
+'''
 # Locations
 dataloc = "../data/"
 plotloc = "../output/"
@@ -170,35 +157,16 @@ def value_counts(df, topn=5, dtypes=["object"]):
 
 
 # Univariate model performance
-# TODO: Remove
-def variable_performance(features, target, splitter):
+def variable_performance(feature, target, splitter, scorer):
 
+    # Detect types
     target_type = dict(continuous="REGR", binary="CLASS", multiclass="MULTICLASS")[type_of_target(target)]
-    print(target_type)
-    metric = "spear" if target_type == "REGR" else "auc"
-    print(metric)
+    numeric_feature = pd.api.types.is_numeric_dtype(feature)
 
-    varimp = dict()
-    for col in features.columns.values:
-        print(col)
-        df_hlp = features[[col]].assign(target=target).dropna().reset_index(drop=True)
-        varimp[col] = np.mean(cross_val_score(
-            estimator=(LinearRegression() if target_type == "REGR" else LogisticRegression()),
-            X=(KBinsDiscretizer().fit_transform(df_hlp[[col]])
-               if pd.api.types.is_numeric_dtype(df_hlp[col]) else OneHotEncoder().fit_transform(df_hlp[[col]])),
-            y=df_hlp["target"], 
-            cv=splitter, 
-            scoring=d_scoring[target_type][metric]))
-    return(pd.Series(varimp))
-
-
-# TODO: Add scorer func.
-def variable_performance_new(feature, target, splitter, scorer):
-
-    target_type = dict(continuous="REGR", binary="CLASS", multiclass="MULTICLASS")[type_of_target(target)]
-
+    # Drop all missings
     df_hlp = pd.DataFrame(feature).assign(target=target).dropna().reset_index(drop=True)
-    numeric_feature = pd.api.types.is_numeric_dtype(df_hlp.iloc[:, [0]])
+    
+    # Calc performance
     perf = np.mean(cross_val_score(
         estimator=(LinearRegression() if target_type == "REGR" else LogisticRegression()),
         X=(KBinsDiscretizer().fit_transform(df_hlp.iloc[:, [0]]) if numeric_feature else 
@@ -206,6 +174,7 @@ def variable_performance_new(feature, target, splitter, scorer):
         y=df_hlp["target"],
         cv=splitter,
         scoring=scorer))
+    
     return perf
 
 
@@ -214,20 +183,19 @@ class Winsorize(BaseEstimator, TransformerMixin):
     def __init__(self, lower_quantile=None, upper_quantile=None):
         self.lower_quantile = lower_quantile
         self.upper_quantile = upper_quantile
-        self._a_lower = None
-        self._a_upper = None
+        #self._private_attr = whatever
 
     def fit(self, X, *_):
         X = pd.DataFrame(X)
         if self.lower_quantile is not None:
-            self._a_lower = np.nanquantile(X, q=self.lower_quantile, axis=0)
+            self.a_lower_ = np.nanquantile(X, q=self.lower_quantile, axis=0)
         if self.upper_quantile is not None:
-            self._a_upper = np.nanquantile(X, q=self.upper_quantile, axis=0)
+            self.a_upper_ = np.nanquantile(X, q=self.upper_quantile, axis=0)
         return self
 
     def transform(self, X, *_):
         if (self.lower_quantile is not None) or (self.upper_quantile is not None):
-            X = np.clip(X, a_min=self._a_lower, a_max=self._a_upper)
+            X = np.clip(X, a_min=self.a_lower_, a_max=self.a_upper_)
         return X
     
 
@@ -235,22 +203,14 @@ class Winsorize(BaseEstimator, TransformerMixin):
 class Collapse(BaseEstimator, TransformerMixin):
     def __init__(self, n_top=10, other_label="_OTHER_"):
         self.n_top = n_top
-        self.other_label = other_label        
-        #self._s_levinfo = None
-        #self._toomany = None
-        #self._d_top = None
-        #self._statistics = None
+        self.other_label = other_label      
 
     def fit(self, X, *_):
-        #self._s_levinfo = pd.DataFrame(X).apply(lambda x: x.unique().size).sort_values(ascending = False)
-        #self._toomany = self._s_levinfo[self._s_levinfo > self.n_top].index.values
-        #self._d_top = {x: pd.DataFrame(X)[x].value_counts().index.values[:self.n_top] for x in self._toomany}
-        #self._statistics = {"_s_levinfo": self._s_levinfo, "_toomany": self._toomany, "_d_top": self._d_top}
-        self._d_top = pd.DataFrame(X).apply(lambda x: x.value_counts().index.values[:self.n_top])
+        self.d_top_ = pd.DataFrame(X).apply(lambda x: x.value_counts().index.values[:self.n_top])
         return self
 
     def transform(self, X):
-        X = pd.DataFrame(X).apply(lambda x: x.where(np.in1d(x, self._d_top[x.name]),
+        X = pd.DataFrame(X).apply(lambda x: x.where(np.in1d(x, self.d_top_[x.name]),
                                                     other=self.other_label)).values
         return X 
     
@@ -258,14 +218,14 @@ class Collapse(BaseEstimator, TransformerMixin):
 # Impute Mode (simpleimputer is too slow)
 class ImputeMode(BaseEstimator, TransformerMixin):
     def __init__(self):
-        self._impute_values = None
+        pass
 
     def fit(self, X):
-        self._impute_values = pd.DataFrame(X).mode().iloc[0]
+        self.impute_values_ = pd.DataFrame(X).mode().iloc[0]
         return self
 
     def transform(self, X):
-        X = pd.DataFrame(X).fillna(self._impute_values).values
+        X = pd.DataFrame(X).fillna(self.impute_values_).values
         return X
     
 
@@ -278,57 +238,15 @@ def undersample(df, target, n_max_per_level, random_state=42):
     b_all = df[target].value_counts().values / len(df)
     df_under = (df.groupby(target).apply(lambda x: x.sample(min(n_max_per_level, x.shape[0]),
                                                             random_state=random_state))
-                .sample(frac=1)
-                .reset_index(drop=True))  # shuffle
+                .sample(frac=1)  # shuffle
+                .reset_index(drop=True))  
     b_sample = df_under[target].value_counts().values / len(df_under)
     return df_under, b_sample, b_all
 
 
-# Special splitter: training fold only from training data, test fold only from test data
-class TrainTestSep:
-    def __init__(self, n_splits=1, sample_type="cv", random_state=42):
-        self.n_splits = n_splits
-        self.sample_type = sample_type
-        self.random_state = random_state
-
-    def split(self, X, test_fold, *args):
-        
-        i_X = np.arange(len(X))
-        i_train = i_X[test_fold == 0]
-        i_test = i_X[test_fold == 1]
-        np.random.seed(self.random_state)
-        np.random.shuffle(i_train)
-        np.random.seed(self.random_state)
-        np.random.shuffle(i_test)
-        if self.sample_type == "cv":
-            splits_train = np.array_split(i_train, self.n_splits)
-            splits_test = np.array_split(i_test, self.n_splits)
-        else:
-            splits_train = None
-            splits_test = None
-        for i in range(self.n_splits):
-            if self.sample_type == "cv":
-                i_train_yield = np.concatenate(splits_train)
-                if self.n_splits > 1:
-                    i_train_yield = np.setdiff1d(i_train_yield, splits_train[i], assume_unique=True)
-                i_test_yield = splits_test[i]
-            elif self.sample_type == "bootstrap":
-                np.random.seed(self.random_state * (i + 1))
-                i_train_yield = np.random.choice(i_train, len(i_train), replace=True)
-                np.random.seed(self.random_state * (i + 1))
-                i_test_yield = np.random.choice(i_test, len(i_test), replace=True)
-            else:
-                i_train_yield = None
-                i_test_yield = None
-            yield i_train_yield, i_test_yield
-
-    def get_n_splits(self, *args):
-        return self.n_splits
-    
-
 class KFoldSep(KFold):
     def __init__(self, features, *args, **kwargs):
-        super().__init__(shuffle = True, *args, **kwargs)
+        super().__init__(shuffle=True, *args, **kwargs)
 
     def split(self, X, y=None, groups=None, test_fold=None):
         i_test_fold = np.arange(len(X))[test_fold]
@@ -342,8 +260,8 @@ class InSampleSplit:
         self.shuffle = shuffle
         self.random_state = random_state
 
-    def split(self, df, *_):
-        i_df = np.arange(df.shape[0])
+    def split(self, X, *args):
+        i_df = np.arange(X.shape[0])
         if self.shuffle:
             np.random.seed(self.random_state)
             np.random.shuffle(i_df)
@@ -351,7 +269,7 @@ class InSampleSplit:
         i_test_yield = i_df
         yield i_train_yield, i_test_yield
 
-    def get_n_splits(self, *_):
+    def get_n_splits(self, *args):
         return 1
     
 
@@ -360,14 +278,15 @@ class ColumnSelector(BaseEstimator, TransformerMixin):
     def __init__(self, columns=None):
         self.columns = columns
 
-    def fit(self, *_):
+    def fit(self, *args):
         return self
 
-    def transform(self, df, *_):
+    def transform(self, df, *args):
         return df[self.columns]
 
 
 # Incremental n_estimators (warm start) GridSearch for XGBoost and Lightgbm
+# TODO adapt to single scorer shape of scikit
 class GridSearchCV_xlgb(GridSearchCV):
 
     def fit(self, X, y=None, **fit_params):
