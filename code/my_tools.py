@@ -191,13 +191,11 @@ def variable_performance(features, target, splitter):
             scoring=d_scoring[target_type][metric]))
     return(pd.Series(varimp))
 
+
 # TODO: Add scorer func.
-def variable_performance_new(feature, target, splitter):
+def variable_performance_new(feature, target, splitter, scorer):
 
     target_type = dict(continuous="REGR", binary="CLASS", multiclass="MULTICLASS")[type_of_target(target)]
-    print(target_type)
-    metric = "spear" if target_type == "REGR" else "auc"
-    print(metric)
 
     df_hlp = pd.DataFrame(feature).assign(target=target).dropna().reset_index(drop=True)
     numeric_feature = pd.api.types.is_numeric_dtype(df_hlp.iloc[:, [0]])
@@ -207,7 +205,7 @@ def variable_performance_new(feature, target, splitter):
            OneHotEncoder().fit_transform(df_hlp.iloc[:, [0]])),
         y=df_hlp["target"],
         cv=splitter,
-        scoring=d_scoring[target_type][metric]))
+        scoring=scorer))
     return perf
 
 

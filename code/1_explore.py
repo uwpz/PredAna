@@ -5,7 +5,7 @@
 # --- Packages --------------------------------------------------------------------------
 
 # General
-import os  # sys.path.append(os.getcwd())
+import os  # import sys; sys.path.append(os.getcwd())
 import numpy as np 
 import pandas as pd 
 import matplotlib
@@ -24,6 +24,7 @@ from sklearn.model_selection import KFold, ShuffleSplit, PredefinedSplit
 
 # Custom functions and classes
 import my_tools as my
+
 
 
 # --- Parameter --------------------------------------------------------------------------
@@ -254,9 +255,10 @@ for TARGET_TYPE in TARGET_TYPES:
     varperf_nume = my.variable_performance(df[np.append(nume, nume + "_BINNED")], df["cnt_" + TARGET_TYPE],
                                            ShuffleSplit(n_splits=1, test_size=0.2, random_state=42))
 
-    df[np.append(nume, nume + "_BINNED")].apply(lambda x: 
+    varperf_nume = df[np.append(nume, nume + "_BINNED")].apply(lambda x: (
         my.variable_performance_new(x, df["cnt_" + TARGET_TYPE],  
-                                    ShuffleSplit(n_splits=1, test_size=0.2, random_state=42)))
+                                    splitter=ShuffleSplit(n_splits=1, test_size=0.2, random_state=42),
+                                    scorer=my.d_scoring[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" else "auc"])))
     print(varperf_nume)
     
     # Plot
