@@ -36,7 +36,7 @@ import my_tools as my
 # --- Parameter --------------------------------------------------------------------------
 
 # Main parameter
-TARGET_TYPE = "CLASS"
+TARGET_TYPE = "REGR"
 
 # Specific parameters
 n_jobs = 4
@@ -56,7 +56,6 @@ for key, val in d_pick.items():
 df["cnt_CLASS"] = df["cnt_CLASS"].str.slice(0, 1).astype("int")
 df["cnt_MULTICLASS"] = df["cnt_MULTICLASS"].str.slice(0, 1).astype("int")
 
-
 ########################################################################################################################
 # Prepare data
 ########################################################################################################################
@@ -69,7 +68,7 @@ if TARGET_TYPE == "REGR":
 else:
     df.query("fold == 'train'")["cnt_" + TARGET_TYPE].value_counts()
     df_tmp, b_sample, b_all = my.undersample(df.query("fold == 'train'"), target="cnt_" + TARGET_TYPE, 
-                                             n_max_per_level=3000)
+                                             n_max_per_level=2000)
     print(b_sample, b_all)
 df_tune = (pd.concat([df_tmp, df.query("fold == 'test'")], sort=False)
            .sample(frac=1)  # shuffle
@@ -95,7 +94,7 @@ tmp.named_transformers_["cate"].categories_
 
 cv_index = PredefinedSplit(df_tune["fold"].map({"train": -1, "test": 0}).values)
 cv_5fold = KFold(5, shuffle=True, random_state=42)
-cv_5foldsep = my.KFoldSep(5, shuffle=True, random_state=42)
+cv_5foldsep = my.KFoldSep(5, random_state=42)
 
 '''
 # Test a split
@@ -118,7 +117,7 @@ fit = (GridSearchCV(SGDRegressor(penalty="ElasticNet", warm_start=True) if TARGE
                     SGDClassifier(loss="log", penalty="ElasticNet", warm_start=True),  # , tol=1e-2
                     {"alpha": [2 ** x for x in range(-8, -20, -2)],
                      "l1_ratio": [0, 1]},
-                    cv=cv_my1fold.split(df_tune),
+                    cv=cv_index.split(df_tune),
                     refit=False,
                     scoring=my.d_scoring[TARGET_TYPE],
                     return_train_score=True,
@@ -127,7 +126,7 @@ fit = (GridSearchCV(SGDRegressor(penalty="ElasticNet", warm_start=True) if TARGE
             y=df_tune["cnt_" + TARGET_TYPE]))
 
 # Plot: use metric="score" if scoring has only 1 metric
-(hms_plot.ValidationPlotter(x_var="alpha", color_var="l1_ratio", show_gen_gap=True)
+(hms_plot.ValidationPlotter(x_var="alpha", color_var="l1_ratio", show_gen_gap=True, w=8, h=6)
  .plot(fit.cv_results_, metric="rmse" if TARGET_TYPE == "REGR" else "auc"))  
 # pd.DataFrame(fit.cv_results_)
 
@@ -135,7 +134,7 @@ fit = (GridSearchCV(SGDRegressor(penalty="ElasticNet", warm_start=True) if TARGE
 if TARGET_TYPE in ["CLASS", "MULTICLASS"]:
     fit = (GridSearchCV(LogisticRegression(penalty="l1", fit_intercept=True, solver="liblinear"),
                         {"C": [2 ** x for x in range(2, -5, -1)]},
-                        cv=cv_my1fold.split(df_tune),
+                        cv=cv_index.split(df_tune),
                         refit=False,
                         scoring=my.d_scoring[TARGET_TYPE],
                         return_train_score=True,
@@ -148,7 +147,7 @@ else:
     fit = (GridSearchCV(ElasticNet(),
                         {"alpha": [2 ** x for x in range(-8, -20, -2)],
                          "l1_ratio": [0, 1]},
-                        cv=cv_my1fold.split(df_tune),
+                        cv=cv_index.split(df_tune),
                         refit=False,
                         scoring=my.d_scoring[TARGET_TYPE],
                         return_train_score=True,
@@ -165,7 +164,7 @@ fit = (GridSearchCV(RandomForestRegressor() if TARGET_TYPE == "REGR" else
                     RandomForestClassifier(),
                     {"n_estimators": [10, 20, 100],
                      "max_features": [x for x in range(1, nume_standard.size + cate_standard.size, 5)]},
-                    cv=cv_my1fold.split(df_tune),
+                    cv=cv_index.split(df_tune),
                     refit=False,
                     scoring=my.d_scoring[TARGET_TYPE],
                     return_train_score=True,
@@ -184,7 +183,7 @@ fit = (my.GridSearchCV_xlgb(xgb.XGBRegressor(verbosity=0) if TARGET_TYPE == "REG
                             xgb.XGBClassifier(verbosity=0),
                             {"n_estimators": [x for x in range(600, 4100, 500)], "learning_rate": [0.01],
                              "max_depth": [3, 6], "min_child_weight": [5]},
-                            cv=cv_my1fold.split(df_tune),
+                            cv=cv_index.split(df_tune),
                             refit=False,
                             scoring=my.d_scoring[TARGET_TYPE],
                             return_train_score=True,
@@ -209,7 +208,7 @@ fit = (my.GridSearchCV_xlgb(lgbm.LGBMRegressor() if TARGET_TYPE == "REGR" else
                             lgbm.LGBMClassifier(),
                             {"n_estimators": [x for x in range(100, 3100, 500)], "learning_rate": [0.01],
                              "num_leaves": [8, 16, 32], "min_child_samples": [5]},
-                            cv=cv_my1fold.split(df_tune),
+                            cv=cv_index.split(df_tune),
                             refit=False,
                             scoring=my.d_scoring[TARGET_TYPE],
                             return_train_score=True,
@@ -282,7 +281,7 @@ fit = (GridSearchCV(KerasRegressor(build_fn=keras_model,
                      "batch_normalization": [True],
                      "activation": ["relu", "elu"],
                      "epochs": [2, 7, 15]},
-                    cv=cv_my1fold.split(df_tune),
+                    cv=cv_index.split(df_tune),
                     refit=False,
                     scoring=my.d_scoring[TARGET_TYPE],
                     return_train_score=True,
@@ -300,10 +299,6 @@ fit = (GridSearchCV(KerasRegressor(build_fn=keras_model,
 # Simulation: compare algorithms
 ########################################################################################################################
 
-# Placeholder for data sampling
-df_modelcomp = df_tune
-
-
 # --- Run methods ------------------------------------------------------------------------------------------------------
 
 df_modelcomp_result = pd.DataFrame()  # intialize
@@ -320,8 +315,8 @@ cvresults = cross_validate(
                            return_train_score=False,
                            n_jobs=n_jobs),
     X=X_binned,
-    y=df_modelcomp["cnt_" + TARGET_TYPE],
-    cv=cv_my5fold.split(df_modelcomp),
+    y=df_tune["cnt_" + TARGET_TYPE],
+    cv=cv_5foldsep.split(df_tune),
     scoring=my.d_scoring[TARGET_TYPE],
     return_train_score=False,
     n_jobs=n_jobs)
@@ -342,8 +337,8 @@ cvresults = cross_validate(
         return_train_score=False,
         n_jobs=n_jobs),
     X=X_standard,
-    y=df_modelcomp["cnt_" + TARGET_TYPE],
-    cv=cv_my5fold.split(df_modelcomp),
+    y=df_tune["cnt_" + TARGET_TYPE],
+    cv=cv_5foldsep.split(df_tune),
     scoring=my.d_scoring[TARGET_TYPE],
     return_train_score=False,
     n_jobs=n_jobs)
@@ -351,10 +346,33 @@ df_modelcomp_result = df_modelcomp_result.append(pd.DataFrame.from_dict(cvresult
                                                  .assign(model="XGBoost"),
                                                  ignore_index=True)
 
+# Lgbm
+cvresults = cross_validate(
+    estimator=my.GridSearchCV_xlgb(
+        lgbm.LGBMRegressor(verbosity=0) if TARGET_TYPE == "REGR" else
+        lgbm.LGBMClassifier(verbosity=0),
+        {"n_estimators": [x for x in range(500, 501, 1)], "learning_rate": [0.01],
+         "num_leaves": [32], "min_child_weight": [5]},
+        cv=ShuffleSplit(1, 0.2, random_state=999),  # just 1-fold for tuning
+        refit="spear" if TARGET_TYPE == "REGR" else "auc",
+        scoring=my.d_scoring[TARGET_TYPE],
+        return_train_score=False,
+        n_jobs=n_jobs),
+    X=X_standard,
+    y=df_tune["cnt_" + TARGET_TYPE],
+    fit_params=dict(categorical_feature=i_cate_standard),
+    cv=cv_5foldsep.split(df_tune),
+    scoring=my.d_scoring[TARGET_TYPE],
+    return_train_score=False,
+    n_jobs=n_jobs)
+df_modelcomp_result = df_modelcomp_result.append(pd.DataFrame.from_dict(cvresults).reset_index()
+                                                 .assign(model="Lgbm"),
+                                                 ignore_index=True)
+
 
 # --- Plot model comparison ------------------------------------------------------------------------------
 
-metric = "spear" if TARGET_TYPE == "REGR" else "auc"
+metric = "rmse" if TARGET_TYPE == "REGR" else "auc"
 my.plot_modelcomp(df_modelcomp_result.rename(columns={"index": "run", "test_" + metric: metric}),
                   scorevar=metric,
                   pdf=plotloc + "model_comparison.pdf")
@@ -363,14 +381,6 @@ my.plot_modelcomp(df_modelcomp_result.rename(columns={"index": "run", "test_" + 
 ########################################################################################################################
 # Learning curve for winner algorithm
 ########################################################################################################################
-
-# Basic data sampling
-df_lc = df_tune
-'''
-X_standard = (ColumnTransformer([('nume', MinMaxScaler(), nume_standard),
-                                 ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"), cate_standard)])
-              .fit_transform(df_lc[np.append(nume_standard, cate_standard)]))
-'''
 
 # Calc learning curve
 n_train, score_train, score_test, time_train, time_test = learning_curve(
@@ -385,9 +395,9 @@ n_train, score_train, score_test, time_train, time_test = learning_curve(
         return_train_score=False,
         n_jobs=n_jobs),
     X=X_standard,
-    y=df_lc["cnt_" + TARGET_TYPE],
+    y=df_tune["cnt_" + TARGET_TYPE],
     train_sizes=np.arange(0.1, 1.1, 0.2),
-    cv=cv_5fold.split(df_lc),
+    cv=cv_5fold.split(df_tune),
     scoring=my.d_scoring[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" else "auc"],
     return_times=True,
     n_jobs=n_jobs)

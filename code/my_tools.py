@@ -246,7 +246,7 @@ def undersample(df, target, n_max_per_level, random_state=42):
 
 # Kfold cross validation with strict separation between (prespecified) train and test-data
 class KFoldSep(KFold):
-    def __init__(self, features, *args, **kwargs):
+    def __init__(self, shuffle, *args, **kwargs):
         super().__init__(shuffle=True, *args, **kwargs)
 
     def split(self, X, y=None, groups=None, test_fold=None):
