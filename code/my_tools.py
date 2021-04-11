@@ -244,6 +244,7 @@ def undersample(df, target, n_max_per_level, random_state=42):
     return df_under, b_sample, b_all
 
 
+# Kfold cross validation with strict separation between (prespecified) train and test-data
 class KFoldSep(KFold):
     def __init__(self, features, *args, **kwargs):
         super().__init__(shuffle=True, *args, **kwargs)
@@ -254,7 +255,7 @@ class KFoldSep(KFold):
             yield i_train[~np.isin(i_train, i_test)], i_test[np.isin(i_test, i_test_fold)]
   
   
-# Splitter: test==train fold, i.e. in-sample selection
+# Splitter: test==train fold, i.e. in-sample selection, needed for quick change of cross-validation code to non-cv
 class InSampleSplit:
     def __init__(self, shuffle=True, random_state=42):
         self.shuffle = shuffle
@@ -265,15 +266,13 @@ class InSampleSplit:
         if self.shuffle:
             np.random.seed(self.random_state)
             np.random.shuffle(i_df)
-        i_train_yield = i_df
-        i_test_yield = i_df
-        yield i_train_yield, i_test_yield
+        yield i_df, i_df  # train equals test
 
     def get_n_splits(self, *args):
         return 1
     
 
-# Column selector: Scikit's ColumnTransformer needs same columns for fit and transform (bug!)
+# Column selector: Workaround as scikit's ColumnTransformer currently needs same columns for fit and transform (bug!)
 class ColumnSelector(BaseEstimator, TransformerMixin):
     def __init__(self, columns=None):
         self.columns = columns
@@ -404,6 +403,7 @@ def plot_modelcomp(df_modelcomp_result, modelvar="model", runvar="run", scorevar
 #######################################################################################################################
 
 # Rescale predictions (e.g. to rewind undersampling)
+# TODO test commented version
 def scale_predictions(yhat, b_sample=None, b_all=None):
     flag_1dim = False
     if b_sample is None:

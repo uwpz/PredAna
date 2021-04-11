@@ -30,7 +30,7 @@ from keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
 #  from sklearn.tree import DecisionTreeRegressor, plot_tree , export_graphviz
 
 # Custom functions and classes
-from . import my_tools as my
+import my_tools as my
 
 
 # --- Parameter --------------------------------------------------------------------------
@@ -95,8 +95,7 @@ tmp.named_transformers_["cate"].categories_
 
 cv_index = PredefinedSplit(df_tune["fold"].map({"train": -1, "test": 0}).values)
 cv_5fold = KFold(5, shuffle=True, random_state=42)
-cv_my1fold = my.TrainTestSep(1)
-cv_my5fold = my.TrainTestSep(5)
+cv_5foldsep = my.KFoldSep(5, shuffle=True, random_state=42)
 
 '''
 # Test a split

@@ -192,7 +192,7 @@ for TARGET_TYPE in TARGET_TYPES:
         my.variable_performance(x, df["cnt_" + TARGET_TYPE],
                                 splitter=ShuffleSplit(n_splits=1, test_size=0.2, random_state=42),
                                 scorer=my.d_scoring[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" else "auc"])))
-    print(varperf_nume)
+    print(varperf_nume.sort_values(ascending=False))
     
     # Plot
     if plot:
@@ -299,9 +299,13 @@ if len(toomany):
 for TARGET_TYPE in TARGET_TYPES:
 
     # Univariate variable importance
-    varperf_cate = my.variable_performance(df[np.append(cate, ["MISS_" + miss])], df["cnt_" + TARGET_TYPE],
-                                           ShuffleSplit(n_splits=1, test_size=0.2, random_state=42)).round(2)
-    print(varperf_cate)
+    #varperf_cate = my.variable_performance(df[np.append(cate, ["MISS_" + miss])], df["cnt_" + TARGET_TYPE],
+    #                                       ShuffleSplit(n_splits=1, test_size=0.2, random_state=42)).round(2)
+    varperf_cate = df[np.append(cate, ["MISS_" + miss])].apply(lambda x: (
+        my.variable_performance(x, df["cnt_" + TARGET_TYPE],
+                                splitter=ShuffleSplit(n_splits=1, test_size=0.2, random_state=42),
+                                scorer=my.d_scoring[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" else "auc"])))
+    print(varperf_cate.sort_values(ascending=False))
 
     # Check
     if plot:
@@ -328,9 +332,10 @@ corr_cate_plot = (hms_plot.CorrelationPlotter(cutoff=0, w=8, h=6)
 
 # Hint: In case of having a detailed date variable this can be used as regression target here as well!
 # Univariate variable importance (again ONLY for non-missing observations!)
-varperf_cate_fold = my.variable_performance(df[np.append(cate, ["MISS_" + miss])], df["fold"],
-                                            my.InSampleSplit()).round(2)
-
+varperf_cate_fold = df[np.append(cate, ["MISS_" + miss])].apply(lambda x: (
+    my.variable_performance(x, df["fold"],
+                            splitter=my.InSampleSplit(),
+                            scorer=my.d_scoring["CLASS"]["auc"])))
 
 # Plot: only variables with with highest importance
 cate_toprint = varperf_cate_fold[varperf_cate_fold > 0.52].index.values
