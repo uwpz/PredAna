@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt  # ,matplotlib
 import pickle
-import importlib  # importlib.reload(my)
+from importlib import reload
 import time
 
 # Special
@@ -30,7 +30,7 @@ from keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
 #  from sklearn.tree import DecisionTreeRegressor, plot_tree , export_graphviz
 
 # Custom functions and classes
-import my_tools as my
+import my_utils as my
 
 
 # --- Parameter --------------------------------------------------------------------------
@@ -38,16 +38,9 @@ import my_tools as my
 # Main parameter
 TARGET_TYPE = "REGR"
 
-# Specific parameters
-n_jobs = 4
-
-# Locations
-dataloc = "../data/"
-plotloc = "../output/"
-
 # Load results from exploration
 df = nume_standard = cate_standard = cate_binned = nume_encoded = None
-with open(dataloc + "1_explore.pkl", "rb") as file:
+with open(my.dataloc + "1_explore.pkl", "rb") as file:
     d_pick = pickle.load(file)
 for key, val in d_pick.items():
     exec(key + "= val")
@@ -55,6 +48,7 @@ for key, val in d_pick.items():
 # Adapt targets
 df["cnt_CLASS"] = df["cnt_CLASS"].str.slice(0, 1).astype("int")
 df["cnt_MULTICLASS"] = df["cnt_MULTICLASS"].str.slice(0, 1).astype("int")
+
 
 ########################################################################################################################
 # Prepare data
@@ -121,7 +115,7 @@ fit = (GridSearchCV(SGDRegressor(penalty="ElasticNet", warm_start=True) if TARGE
                     refit=False,
                     scoring=my.d_scoring[TARGET_TYPE],
                     return_train_score=True,
-                    n_jobs=1)
+                    n_jobs=my.n_jobs)
        .fit(X=X_binned,
             y=df_tune["cnt_" + TARGET_TYPE]))
 
@@ -138,7 +132,7 @@ if TARGET_TYPE in ["CLASS", "MULTICLASS"]:
                         refit=False,
                         scoring=my.d_scoring[TARGET_TYPE],
                         return_train_score=True,
-                        n_jobs=n_jobs)
+                        n_jobs=my.n_jobs)
            .fit(X=X_binned,
                 y=df_tune["cnt_" + TARGET_TYPE]))
     (hms_plot.ValidationPlotter(x_var="C", show_gen_gap=True)
@@ -151,7 +145,7 @@ else:
                         refit=False,
                         scoring=my.d_scoring[TARGET_TYPE],
                         return_train_score=True,
-                        n_jobs=n_jobs)
+                        n_jobs=my.n_jobs)
            .fit(X=X_binned,
                 y=df_tune["cnt_" + TARGET_TYPE]))
     (hms_plot.ValidationPlotter(x_var="alpha", color_var="l1_ratio", show_gen_gap=True)
@@ -169,7 +163,7 @@ fit = (GridSearchCV(RandomForestRegressor() if TARGET_TYPE == "REGR" else
                     scoring=my.d_scoring[TARGET_TYPE],
                     return_train_score=True,
                     # use_warm_start=["n_estimators"],
-                    n_jobs=n_jobs)
+                    n_jobs=my.n_jobs)
        .fit(X=X_standard,
             y=df_tune["cnt_" + TARGET_TYPE]))
 (hms_plot.ValidationPlotter(x_var="n_estimators", color_var="max_features", show_gen_gap=True)
@@ -177,7 +171,7 @@ fit = (GridSearchCV(RandomForestRegressor() if TARGET_TYPE == "REGR" else
 
 
 # --- XGBoost ----------------------------------------------------------------------------------------------------------
-
+#%%
 start = time.time()
 fit = (my.GridSearchCV_xlgb(xgb.XGBRegressor(verbosity=0) if TARGET_TYPE == "REGR" else
                             xgb.XGBClassifier(verbosity=0),
@@ -187,14 +181,14 @@ fit = (my.GridSearchCV_xlgb(xgb.XGBRegressor(verbosity=0) if TARGET_TYPE == "REG
                             refit=False,
                             scoring=my.d_scoring[TARGET_TYPE],
                             return_train_score=True,
-                            n_jobs=n_jobs)
+                            n_jobs=1)
        .fit(X=X_standard,
             y=df_tune["cnt_" + TARGET_TYPE]))
 print(time.time() - start)
 (hms_plot.ValidationPlotter(x_var="n_estimators", color_var="max_depth", column_var="min_child_weight",
                             show_gen_gap=True)
  .plot(fit.cv_results_, metric="rmse" if TARGET_TYPE == "REGR" else "auc"))
-
+#%%
 
 # --- LightGBM ---------------------------------------------------------------------------------------------------------
  
@@ -212,7 +206,7 @@ fit = (my.GridSearchCV_xlgb(lgbm.LGBMRegressor() if TARGET_TYPE == "REGR" else
                             refit=False,
                             scoring=my.d_scoring[TARGET_TYPE],
                             return_train_score=True,
-                            n_jobs=n_jobs)
+                            n_jobs=my.n_jobs)
        .fit(X_standard,
             categorical_feature=i_cate_standard,
             y=df_tune["cnt_" + TARGET_TYPE]))
@@ -285,7 +279,7 @@ fit = (GridSearchCV(KerasRegressor(build_fn=keras_model,
                     refit=False,
                     scoring=my.d_scoring[TARGET_TYPE],
                     return_train_score=True,
-                    n_jobs=n_jobs)
+                    n_jobs=my.n_jobs)
        .fit(X_standard,
             y=(pd.get_dummies(df_tune["cnt_" + TARGET_TYPE]) if TARGET_TYPE == "MULTICLASS" else 
                df_tune["cnt_" + TARGET_TYPE])))
@@ -313,13 +307,13 @@ cvresults = cross_validate(
                            refit="spear" if TARGET_TYPE == "REGR" else "auc",
                            scoring=my.d_scoring[TARGET_TYPE],
                            return_train_score=False,
-                           n_jobs=n_jobs),
+                           n_jobs=my.n_jobs),
     X=X_binned,
     y=df_tune["cnt_" + TARGET_TYPE],
     cv=cv_5foldsep.split(df_tune),
     scoring=my.d_scoring[TARGET_TYPE],
     return_train_score=False,
-    n_jobs=n_jobs)
+    n_jobs=my.n_jobs)
 df_modelcomp_result = df_modelcomp_result.append(pd.DataFrame.from_dict(cvresults).reset_index()
                                                  .assign(model="ElasticNet"),
                                                  ignore_index=True)
@@ -335,13 +329,13 @@ cvresults = cross_validate(
         refit="spear" if TARGET_TYPE == "REGR" else "auc",
         scoring=my.d_scoring[TARGET_TYPE],
         return_train_score=False,
-        n_jobs=n_jobs),
+        n_jobs=my.n_jobs),
     X=X_standard,
     y=df_tune["cnt_" + TARGET_TYPE],
     cv=cv_5foldsep.split(df_tune),
     scoring=my.d_scoring[TARGET_TYPE],
     return_train_score=False,
-    n_jobs=n_jobs)
+    n_jobs=my.n_jobs)
 df_modelcomp_result = df_modelcomp_result.append(pd.DataFrame.from_dict(cvresults).reset_index()
                                                  .assign(model="XGBoost"),
                                                  ignore_index=True)
@@ -357,14 +351,14 @@ cvresults = cross_validate(
         refit="spear" if TARGET_TYPE == "REGR" else "auc",
         scoring=my.d_scoring[TARGET_TYPE],
         return_train_score=False,
-        n_jobs=n_jobs),
+        n_jobs=my.n_jobs),
     X=X_standard,
     y=df_tune["cnt_" + TARGET_TYPE],
     fit_params=dict(categorical_feature=i_cate_standard),
     cv=cv_5foldsep.split(df_tune),
     scoring=my.d_scoring[TARGET_TYPE],
     return_train_score=False,
-    n_jobs=n_jobs)
+    n_jobs=my.n_jobs)
 df_modelcomp_result = df_modelcomp_result.append(pd.DataFrame.from_dict(cvresults).reset_index()
                                                  .assign(model="Lgbm"),
                                                  ignore_index=True)
@@ -375,7 +369,7 @@ df_modelcomp_result = df_modelcomp_result.append(pd.DataFrame.from_dict(cvresult
 metric = "rmse" if TARGET_TYPE == "REGR" else "auc"
 my.plot_modelcomp(df_modelcomp_result.rename(columns={"index": "run", "test_" + metric: metric}),
                   scorevar=metric,
-                  pdf=plotloc + "model_comparison.pdf")
+                  pdf=my.plotloc + "model_comparison.pdf")
 
 
 ########################################################################################################################
@@ -393,15 +387,15 @@ n_train, score_train, score_test, time_train, time_test = learning_curve(
         refit="spear" if TARGET_TYPE == "REGR" else "auc",
         scoring=my.d_scoring[TARGET_TYPE],
         return_train_score=False,
-        n_jobs=n_jobs),
+        n_jobs=my.n_jobs),
     X=X_standard,
     y=df_tune["cnt_" + TARGET_TYPE],
     train_sizes=np.arange(0.1, 1.1, 0.2),
     cv=cv_5fold.split(df_tune),
     scoring=my.d_scoring[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" else "auc"],
     return_times=True,
-    n_jobs=n_jobs)
+    n_jobs=my.n_jobs)
 
 # Plot it
 hms_plot.LearningPlotter().plot(n_train, score_train, score_test, time_train,
-                                file_path=plotloc + "learningCurve.pdf")
+                                file_path=my.plotloc + "learningCurve.pdf")

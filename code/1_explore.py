@@ -8,10 +8,9 @@
 import os  # import sys; sys.path.append(os.getcwd())
 import numpy as np 
 import pandas as pd 
-import matplotlib
 import matplotlib.pyplot as plt  # ,matplotlib
 import pickle
-import importlib  # importlib.reload(my)
+from importlib import reload
 import time
 
 # Special
@@ -21,28 +20,20 @@ from sklearn.impute import SimpleImputer
 from sklearn.model_selection import KFold, ShuffleSplit, PredefinedSplit
 
 # Custom functions and classes
-import my_tools as my
+import my_utils as my
 
 
 # --- Parameter --------------------------------------------------------------------------
 
-# Locations
-os.getcwd()
-dataloc = "../data/"
-plotloc = "../output/"
-
 # Plot 
 plot = True
-# Show directly or not
-%matplotlib Agg 
-#plt.ioff(); matplotlib.use('Agg')  # stop standard
-#%matplotlib inline  
-#plt.ion(); matplotlib.use('TkAgg')  # start standard
+#%matplotlib qt / %matplotlib inline  # activate standard/inline window
+#plt.ioff() / plt.ion()  # stop/starrt standard window
 #plt.plot(1, 1)
+
 
 # Specific parameters 
 TARGET_TYPES = ["REGR", "CLASS", "MULTICLASS"]
-
 
 
 ########################################################################################################################
@@ -52,7 +43,8 @@ TARGET_TYPES = ["REGR", "CLASS", "MULTICLASS"]
 # --- Read data and adapt to be more readable --------------------------------------------------------------------------
 
 # Read and adapt
-df_orig = (pd.read_csv(dataloc + "hour.csv", parse_dates=["dteday"])
+
+df_orig = (pd.read_csv(my.dataloc + "hour.csv", parse_dates=["dteday"])
            .replace({"season": {1: "1_winter", 2: "2_spring", 3: "3_summer", 4: "4_fall"},
                      "yr": {0: "2011", 1: "2012"},
                      "holiday": {0: "No", 1: "Yes"},
@@ -99,7 +91,7 @@ df = df_orig.copy()
 
 # --- Read metadata (Project specific) ---------------------------------------------------------------------------------
 
-df_meta = pd.read_excel(dataloc + "datamodel_bikeshare.xlsx", header=1, engine='openpyxl')
+df_meta = pd.read_excel(my.dataloc + "datamodel_bikeshare.xlsx", header=1, engine='openpyxl')
 
 # Check
 print(my.diff(df.columns, df_meta["variable"]))
@@ -168,7 +160,7 @@ for TARGET_TYPE in TARGET_TYPES:
                                                                      show_regplot=True)
                             .plot(features=df[nume],
                                   target=df["cnt_" + TARGET_TYPE],
-                                  file_path=plotloc + "distr_nume__" + TARGET_TYPE + ".pdf"))
+                                  file_path=my.plotloc + "distr_nume__" + TARGET_TYPE + ".pdf"))
     print(time.time() - start)
     
 # Winsorize (hint: plot again before deciding for log-trafo)
@@ -201,7 +193,7 @@ for TARGET_TYPE in TARGET_TYPES:
                             .plot(features=df[np.column_stack((nume, nume + "_BINNED")).ravel()],
                                   target=df["cnt_" + TARGET_TYPE],
                                   varimps=varperf_nume.round(2),
-                                  file_path=plotloc + "distr_nume_final__" + TARGET_TYPE + ".pdf"))
+                                  file_path=my.plotloc + "distr_nume_final__" + TARGET_TYPE + ".pdf"))
 
 
 # --- Removing variables -----------------------------------------------------------------------------------------------
@@ -213,7 +205,7 @@ nume = my.diff(nume, remove)
 # Remove highly/perfectly (>=98%) correlated (the ones with less NA!)
 df[nume].describe()
 corr_plot = (hms_plot.CorrelationPlotter(cutoff=0, w=8, h=6)
-             .plot(features=df[nume], file_path=plotloc + "corr_nume.pdf"))
+             .plot(features=df[nume], file_path=my.plotloc + "corr_nume.pdf"))
 remove = ["atemp"]
 nume = my.diff(nume, remove)
 
@@ -237,7 +229,7 @@ if len(nume_toprint):
                                     .plot(features=df[nume_toprint],
                                           target=df["fold"],
                                           varimps=varperf_nume_fold,
-                                          file_path=plotloc + "distr_nume_folddep.pdf"))
+                                          file_path=my.plotloc + "distr_nume_folddep.pdf"))
 
 
 # --- Missing indicator and imputation (must be done at the end of all processing)--------------------------------------
@@ -313,7 +305,7 @@ for TARGET_TYPE in TARGET_TYPES:
                             .plot(features=df[np.append(cate, ["MISS_" + miss])],
                                   target=df["cnt_" + TARGET_TYPE],
                                   varimps=varperf_cate,
-                                  file_path=plotloc + "distr_cate__" + TARGET_TYPE + ".pdf"))
+                                  file_path=my.plotloc + "distr_cate__" + TARGET_TYPE + ".pdf"))
 
 
 # --- Removing variables -----------------------------------------------------------------------------------------------
@@ -325,7 +317,7 @@ toomany = my.diff(toomany, ["xxx"])
 # Remove highly/perfectly (>=99%) correlated (the ones with less levels!)
 corr_cate_plot = (hms_plot.CorrelationPlotter(cutoff=0, w=8, h=6)
                   .plot(features=df[np.append(cate, ["MISS_" + miss])],
-                        file_path=plotloc + "corr_cate.pdf"))
+                        file_path=my.plotloc + "corr_cate.pdf"))
 
 
 # --- Time/fold depedency ----------------------------------------------------------------------------------------------
@@ -345,7 +337,7 @@ if len(nume_toprint):
                                     .plot(features=df[cate_toprint],
                                           target=df["fold"],
                                           varimps=varperf_cate_fold,
-                                          file_path=plotloc + "distr_cate_folddep.pdf"))
+                                          file_path=my.plotloc + "distr_cate_folddep.pdf"))
 
 
 
@@ -389,7 +381,7 @@ plt.close(fig="all")  # plt.close(plt.gcf())
 del df_orig
 
 # Serialize
-with open(dataloc + "1_explore.pkl", "wb") as file:
+with open(my.dataloc + "1_explore.pkl", "wb") as file:
     pickle.dump({"df": df,
                  "nume_standard": nume_standard,
                  "cate_standard": cate_standard,
