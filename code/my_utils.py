@@ -561,10 +561,13 @@ def partial_dependence(estimator, df, features,
 
 
 # Aggregate onehot encoded shapely values
-def agg_shap_values(shap_values, df_explain, d_map, round=2):
+def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
+    '''
+    df_explain: data frame used to create matrix which is send to shap explainer
+    len_nume: number of numerical features building first columns of df_explain
+    d_map_onehot:  like categories_ of onehot-encoder 
+    '''
     
-    #d_map example: {'season': array(['1_winter', '2_spring']),'yr': array(['2011', '2012'])}
-
     # Copy
     shap_values_agg = copy.copy(shap_values)
 
@@ -572,19 +575,18 @@ def agg_shap_values(shap_values, df_explain, d_map, round=2):
     shap_values_agg.feature_names = np.tile(df_explain.columns.values, (len(shap_values_agg), 1))
 
     # Adapt display data
-    shap_values_agg.data = df_explain.round(2).values
+    shap_values_agg.data = df_explain.round(round).values
 
-    # Aggregate shap values
-    df_shap = pd.DataFrame()
-    start = 0
-    for feature in df_explain.columns.values:
-        if feature in d_map.keys():
-            step = len(d_map[feature])
-            df_shap[feature] = shap_values_agg.values[:, start:(start + step)].sum(axis=1)
-            start = start + step
-        else:
-            df_shap[feature] = shap_values_agg.values[:, start]
-            start = start + 1
+    # Initilaize with nume shap valus (MUST BE AT BEGINNING OF df_explain)
+    start_cate = len_nume
+    df_shap = pd.DataFrame(shap_values_agg.values[:, 0:start_cate])
+    
+    # Aggregate cate shap values
+    for i in range(len(l_map_onehot)):
+        step = len(l_map_onehot[i])
+        df_shap[len_nume + i] = shap_values_agg.values[:, start_cate:(start_cate + step)].sum(axis=1)
+        start_cate = start_cate + step
+
     shap_values_agg.values = df_shap.values
 
     # Return

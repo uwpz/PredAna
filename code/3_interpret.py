@@ -35,11 +35,11 @@ import my_utils as my
 # --- Parameter --------------------------------------------------------------------------
 
 # Main parameter
-TARGET_TYPE = "REGR"
+TARGET_TYPE = "CLASS"
 target_name = "cnt_" + TARGET_TYPE
 
 # Plot
-plot = True
+plot = False
 #%matplotlib qt / %matplotlib inline  # activate standard/inline window
 #plt.ioff() / plt.ion()  # stop/start standard window
 #plt.plot(1, 1)
@@ -209,9 +209,10 @@ n_worst = 10
 df_explain = df_test.sort_values("abs_residual", ascending=False).iloc[:n_worst, :]
 explainer = shap.TreeExplainer(model[1].estimator if type(model[1]) == my.ScalingEstimator else model[1])
 shap_values = explainer(model[0].transform(X=df_explain[features]))
-shap_values_agg = my.agg_shap_values(shap_values, df_explain[features],
-                                     d_map=dict(zip(cate, model[0].transformers_[1][1].categories_)), 
+shap_values_agg = my.agg_shap_values(shap_values, df_explain[features], 
+                                     len_nume=len(nume), l_map_onehot=model[0].transformers_[1][1].categories_, 
                                      round=2)
+
 # Plot
 fig, ax = plt.subplots(1, 1)
 shap.plots.waterfall(shap_values_agg[0], show=True)  # TDODO: replace "00"
@@ -334,8 +335,9 @@ df_explain = df_test.iloc[i_explain, :].reset_index(drop=True)
 explainer = shap.TreeExplainer(model[1].estimator if type(model[1]) == my.ScalingEstimator else model[1])
 shap_values = explainer(model[0].transform(X=df_explain[features]))
 shap_values_agg = my.agg_shap_values(shap_values, df_explain[features],
-                                     d_map=dict(zip(cate, model[0].transformers_[1][1].categories_)),
+                                     len_nume=len(nume), l_map_onehot=model[0].transformers_[1][1].categories_,
                                      round=2)
+
 # Plot
 fig, ax = plt.subplots(1, 1)
 shap.plots.waterfall(shap_values_agg[0], show=True)
