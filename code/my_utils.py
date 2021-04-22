@@ -414,8 +414,7 @@ def scale_predictions(yhat, b_sample=None, b_all=None):
             flag_1dim = True
             yhat = np.column_stack((1 - yhat, yhat))
         tmp = (yhat * b_all) / b_sample
-        #yhat_rescaled = (tmp.T / tmp.sum(axis=1)).T  # transposing is needed for casting
-        yhat_rescaled = tmp / tmp.sum(axis=1, keepdims=True)  #.reshape(len(tmp), 1)
+        yhat_rescaled = tmp / tmp.sum(axis=1, keepdims=True)  
     if flag_1dim:
         yhat_rescaled = yhat_rescaled[:, 1]
     return yhat_rescaled
