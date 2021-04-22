@@ -207,24 +207,32 @@ if TARGET_TYPE == "REGR":
 # Get shap for n_worst predicted records
 n_worst = 10
 df_explain = df_test.sort_values("abs_residual", ascending=False).iloc[:n_worst, :]
-explainer = shap.TreeExplainer(model[1].estimator if type(model[1]) == my.ScalingEstimator else model[1])
-shap_values = explainer(model[0].transform(X=df_explain[features]))
-shap_values_agg = my.agg_shap_values(shap_values, df_explain[features], 
-                                     len_nume=len(nume), l_map_onehot=model[0].transformers_[1][1].categories_, 
-                                     round=2)
+explainer = shap.TreeExplainer(model[1].estimator if type(model[1]) is my.ScalingEstimator else model[1])
+shap_values = my.agg_shap_values(explainer(model[0].transform(X=df_explain[features])),
+                                 df_explain[features],
+                                 len_nume=len(nume), l_map_onehot=model[0].transformers_[1][1].categories_, 
+                                 round=2)
 
 # Plot
 fig, ax = plt.subplots(1, 1)
-shap.plots.waterfall(shap_values_agg[0], show=True)  # TDODO: replace "00"
+i = 0
+if TARGET_TYPE != "MULTICLASS":
+    shap.plots.waterfall(shap_values[i], show=True)  # TDODO: replace "00"
+else:
+    shap.plots.waterfall(shap_values[i][:, df_explain[target_name + "_num"].iloc[i]], show=True)  
 
 # Check
+shaphat = shap_values.values.sum(axis=1) + shap_values.base_values
 if TARGET_TYPE == "REGR":
-    np.isclose(shap_values.values.sum(axis=1) + explainer.expected_value,
-               model.predict(df_explain[features]))
+    print(np.isclose(shaphat, model.predict(df_explain[features])))
+elif TARGET_TYPE == "CLASS":
+    print(np.isclose(my.scale_predictions(my.inv_logit(shaphat), b_sample, b_all),
+               model.predict_proba(df_explain[features])[:, 1]))
 else:
-    np.isclose(my.scale_predictions(my.inv_logit(shap_values.values.sum(axis=1) + explainer.expected_value),
-                                    b_sample, b_all),
-               model.predict_proba(df_explain[features])[:, 1])
+    print(np.isclose(my.scale_predictions(np.exp(shaphat) / np.exp(shaphat).sum(axis=1, keepdims=True), 
+                                          b_sample, b_all),
+               model.predict_proba(df_explain[features])))
+
 
 
 ########################################################################################################################

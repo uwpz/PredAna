@@ -410,7 +410,7 @@ def scale_predictions(yhat, b_sample=None, b_all=None):
             yhat = np.column_stack((1 - yhat, yhat))
         tmp = (yhat * b_all) / b_sample
         #yhat_rescaled = (tmp.T / tmp.sum(axis=1)).T  # transposing is needed for casting
-        yhat_rescaled = tmp / tmp.sum(axis=1).reshape(len(tmp), 1)
+        yhat_rescaled = tmp / tmp.sum(axis=1, keepdims=True)  #.reshape(len(tmp), 1)
     if flag_1dim:
         yhat_rescaled = yhat_rescaled[:, 1]
     return yhat_rescaled
@@ -565,7 +565,7 @@ def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
     '''
     df_explain: data frame used to create matrix which is send to shap explainer
     len_nume: number of numerical features building first columns of df_explain
-    d_map_onehot:  like categories_ of onehot-encoder 
+    l_map_onehot:  like categories_ of onehot-encoder 
     '''
     
     # Copy
@@ -577,17 +577,25 @@ def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
     # Adapt display data
     shap_values_agg.data = df_explain.round(round).values
 
+    # Care for multiclass
+    values_3d = np.atleast_3d(shap_values_agg.values)
+    a_shap = np.empty((values_3d.shape[0], df_explain.shape[1], values_3d.shape[2]))
+    #for k in range(a_shap.shape[2]):
+        
     # Initilaize with nume shap valus (MUST BE AT BEGINNING OF df_explain)
     start_cate = len_nume
-    df_shap = pd.DataFrame(shap_values_agg.values[:, 0:start_cate])
-    
+    a_shap[:, 0:start_cate, :] = values_3d[:, 0:start_cate, :].copy()
+
     # Aggregate cate shap values
     for i in range(len(l_map_onehot)):
         step = len(l_map_onehot[i])
-        df_shap[len_nume + i] = shap_values_agg.values[:, start_cate:(start_cate + step)].sum(axis=1)
+        a_shap[:, len_nume + i, :] = values_3d[:, start_cate:(start_cate + step), :].sum(axis=1)
         start_cate = start_cate + step
-
-    shap_values_agg.values = df_shap.values
+        
+    # Adapt non-multiclass    
+    if a_shap.shape[2] == 1:
+        a_shap = a_shap[:, :, 0]
+    shap_values_agg.values = a_shap
 
     # Return
     return shap_values_agg
