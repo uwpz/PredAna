@@ -11,6 +11,7 @@ import seaborn as sns
 from joblib import Parallel, delayed
 import copy
 import warnings
+import time
 
 # Scikit
 from sklearn.metrics import make_scorer, roc_auc_score, accuracy_score
@@ -101,8 +102,8 @@ def rmse(y_true, y_pred):
     return np.sqrt(np.mean(np.power(y_true - y_pred, 2)))
 
 
-def me(y_true, y_pred):
-    return np.mean(y_true - y_pred)
+def ame(y_true, y_pred):
+    return np.abs(np.mean(y_true - y_pred))
 
 
 def mae(y_true, y_pred):
@@ -132,7 +133,7 @@ def acc(y_true, y_pred):
 # Scoring metrics
 d_scoring = {"REGR": {"spear": make_scorer(spear, greater_is_better=True),
                       "rmse": make_scorer(rmse, greater_is_better=False),
-                      "me": make_scorer(me, greater_is_better=False),
+                      "ame": make_scorer(ame, greater_is_better=False),
                       "mae": make_scorer(mae, greater_is_better=False)},
              "CLASS": {"auc": make_scorer(auc, greater_is_better=True, needs_proba=True),
                        "acc": make_scorer(acc, greater_is_better=True)},
@@ -311,12 +312,14 @@ class GridSearchCV_xlgb(GridSearchCV):
 
                 # pdb.set_trace()
                 # Fit only once par parameter set with maximum number of n_estimators
+                start = time.time()
                 fit = (clone(self.estimator).set_params(**d_param,
                                                         n_estimators=int(max(n_estimators)))
                        .fit(_safe_indexing(X, i_train), _safe_indexing(y, i_train), **fit_params))
-
+                fit_time = time.time() - start
                 # Score with all n_estimators
                 for ntree_limit in n_estimators:
+                    start = time.time()
                     if isinstance(self.estimator, lgbm.sklearn.LGBMClassifier):
                         yhat_test = fit.predict_proba(_safe_indexing(X, i_test), num_iteration=ntree_limit)
                     elif isinstance(self.estimator, lgbm.sklearn.LGBMRegressor):
@@ -325,6 +328,7 @@ class GridSearchCV_xlgb(GridSearchCV):
                         yhat_test = fit.predict_proba(_safe_indexing(X, i_test), ntree_limit=ntree_limit)
                     else:
                         yhat_test = fit.predict(_safe_indexing(X, i_test), ntree_limit=ntree_limit)
+                    score_time = time.time() - start
 
                     # Do it for training as well
                     if self.return_train_score:
@@ -342,6 +346,7 @@ class GridSearchCV_xlgb(GridSearchCV):
                         scorer_value = self.scoring[scorer]._score_func(_safe_indexing(y, i_test), yhat_test)
                         df_results = df_results.append(pd.DataFrame(dict(fold_type="test", fold=fold,
                                                                          scorer=scorer, scorer_value=scorer_value,
+                                                                         fit_time=fit_time, score_time=score_time,
                                                                          n_estimators=ntree_limit, **d_param),
                                                                     index=[0]))
                         if self.return_train_score:

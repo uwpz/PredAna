@@ -122,7 +122,7 @@ fit = (GridSearchCV(SGDRegressor(penalty="ElasticNet", warm_start=True) if TARGE
 # Plot: use metric="score" if scoring has only 1 metric
 (hms_plot.ValidationPlotter(x_var="alpha", color_var="l1_ratio", show_gen_gap=True, w=8, h=6)
  .plot(fit.cv_results_, metric="rmse" if TARGET_TYPE == "REGR" else "auc"))  
-# pd.DataFrame(fit.cv_results_)
+# a=pd.DataFrame(fit.cv_results_)
 
 # Usually better alternative
 if TARGET_TYPE in ["CLASS", "MULTICLASS"]:
