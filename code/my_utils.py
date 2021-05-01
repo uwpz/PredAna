@@ -340,13 +340,21 @@ class GridSearchCV_xlgb(GridSearchCV):
                             yhat_train = fit.predict_proba(_safe_indexing(X, i_train), ntree_limit=ntree_limit)
                         else:
                             yhat_train = fit.predict(_safe_indexing(X, i_train), ntree_limit=ntree_limit)
-
+                            
+                    # Get time metrics
+                    df_results = df_results.append(pd.DataFrame(dict(fold_type="train", fold=fold,
+                                                                     scorer="time", scorer_value=fit_time,
+                                                                     n_estimators=ntree_limit, **d_param),
+                                                                index=[0]))
+                    df_results = df_results.append(pd.DataFrame(dict(fold_type="test", fold=fold,
+                                                                     scorer="time", scorer_value=score_time,
+                                                                     n_estimators=ntree_limit, **d_param),
+                                                                index=[0]))
                     # Get performance metrics
                     for scorer in self.scoring:
                         scorer_value = self.scoring[scorer]._score_func(_safe_indexing(y, i_test), yhat_test)
                         df_results = df_results.append(pd.DataFrame(dict(fold_type="test", fold=fold,
                                                                          scorer=scorer, scorer_value=scorer_value,
-                                                                         fit_time=fit_time, score_time=score_time,
                                                                          n_estimators=ntree_limit, **d_param),
                                                                     index=[0]))
                         if self.return_train_score:
@@ -371,7 +379,15 @@ class GridSearchCV_xlgb(GridSearchCV):
                                        aggfunc=["mean", "std"],
                                        dropna=False)
         df_cv_results.columns = ['_'.join(x) for x in df_cv_results.columns.values]
+        scorer_names = np.array(list(self.scoring.keys()), dtype=object)
+        df_cv_results["rank_test_" + scorer_names] = df_cv_results["mean_test_" + scorer_names].rank()
+        df_cv_results = df_cv_results.rename(columns={"mean_train_time": "mean_fit_time",
+                                                      "mean_test_time": "mean_score_time",
+                                                      "std_train_time": "std_fit_time",
+                                                      "std_test_time": "std_score_time"})
         df_cv_results = df_cv_results.reset_index()
+        df_cv_results["params"] = df_cv_results[param_names].apply(lambda x: x.to_dict(), axis=1)
+        df_cv_results = df_cv_results.rename(columns={name: "param_" + name for name in param_names})
         self.cv_results_ = df_cv_results.to_dict(orient="list")
 
         # Refit

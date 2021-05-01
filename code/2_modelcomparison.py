@@ -171,24 +171,23 @@ fit = (GridSearchCV(RandomForestRegressor() if TARGET_TYPE == "REGR" else
 
 
 # --- XGBoost ----------------------------------------------------------------------------------------------------------
-#%%
 start = time.time()
 fit = (my.GridSearchCV_xlgb(xgb.XGBRegressor(verbosity=0) if TARGET_TYPE == "REGR" else
                             xgb.XGBClassifier(verbosity=0),
                             {"n_estimators": [x for x in range(600, 4100, 500)], "learning_rate": [0.01],
-                             "max_depth": [3, 6], "min_child_weight": [5]},
+                             "max_depth": [3, 6], "min_child_weight": [5]},                         
                             cv=cv_index.split(df_tune),
                             refit=False,
-                            scoring=my.d_scoring[TARGET_TYPE],
+                            scoring=my.d_scoring[TARGET_TYPE],  # must be dict here
                             return_train_score=True,
-                            n_jobs=1)
+                            n_jobs=my.n_jobs)
        .fit(X=X_standard,
             y=df_tune["cnt_" + TARGET_TYPE]))
 print(time.time() - start)
 (hms_plot.ValidationPlotter(x_var="n_estimators", color_var="max_depth", column_var="min_child_weight",
                             show_gen_gap=True)
  .plot(fit.cv_results_, metric="rmse" if TARGET_TYPE == "REGR" else "auc"))
-#%%
+
 
 # --- LightGBM ---------------------------------------------------------------------------------------------------------
  

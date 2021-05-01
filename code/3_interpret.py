@@ -35,7 +35,7 @@ import my_utils as my
 # --- Parameter --------------------------------------------------------------------------
 
 # Main parameter
-TARGET_TYPE = "CLASS"
+TARGET_TYPE = "MULTICLASS"
 target_name = "cnt_" + TARGET_TYPE
 
 # Plot
@@ -295,7 +295,7 @@ if plot:
 # cate
 cate_top_test = my.diff(features_top_test, nume)
 partial_dependence(model, df_test[features],
-                   features=cate_top_test[0],  # just one feature per call!
+                   features=cate_top_test[0],  # just one feature per call is possible!
                    grid_resolution=np.inf,  # workaround to take all members
                    kind="average")
 # nume
