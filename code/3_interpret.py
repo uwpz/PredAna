@@ -35,7 +35,7 @@ import my_utils as my
 # --- Parameter --------------------------------------------------------------------------
 
 # Main parameter
-TARGET_TYPE = "MULTICLASS"
+TARGET_TYPE = "CLASS"
 target_name = "cnt_" + TARGET_TYPE
 
 # Plot
@@ -308,6 +308,9 @@ Parallel(n_jobs=my.n_jobs, max_nbytes='100M')(
     for feature in nume_top_test)
 '''
 
+# Todo: remove
+features_top_test = features
+
 # Calc PD
 d_pd = my.partial_dependence(model, df_test[features], features_top_test, df_ref=df_train)
 
@@ -316,12 +319,36 @@ d_pd_cv = {feature: pd.DataFrame() for feature in features_top_test}
 for i, (i_train, i_test) in enumerate(cv_5foldsep.split(df_traintest,
                                                         test_fold=(df_traintest["fold"] == "test").values)):
     d_pd_run = my.partial_dependence(model, df_traintest.iloc[i_test, :][features], features_top_test,
-                                     df_ref=df_traintest.iloc[i_train, :])
+                                     df_ref=df_train)
     for feature in features_top_test:
         d_pd_cv[feature] = d_pd_cv[feature].append(d_pd_run[feature].assign(run=i)).reset_index(drop=True)
+d_pd_err = {feature: df_tmp.drop(columns="run").groupby("value").sem()
+            for feature, df_tmp in d_pd_cv.items()}
+
 
 # Plot it
-# TODO
+# TODO: plot_grid from hmsPM
+
+n_row = 2
+n_col = 2
+figsize = (10,10)
+l_plots = []
+for i, feature in enumerate(list(d_pd.keys())):
+    if i % (n_row * n_col) == 0:
+        fig, ax = plt.subplots(n_row, n_col, figsize=figsize)
+        l_plots = l_plots + list((fig, ax))
+        i_ax = 0
+    print(feature)
+    my.plot_pd(ax=ax.flat[i_ax],
+               feature_name=feature, feature=d_pd[feature]["value"],
+               yhat=d_pd[feature].iloc[:, 1].values,
+               yhat_err=d_pd_err[feature].iloc[:, 1].values,
+               feature_ref=df_test[feature],
+               refline=df_test[target_name + "_num"].mean(),
+               ylim=None, color=my.colorblind[1])
+    fig.tight_layout()
+    i_ax += 1
+
 
 
 ########################################################################################################################
@@ -363,7 +390,7 @@ plt.close("all")
 
 
 # ######################################################################################################################
-# Individual dependencies
+# Individual dependencies / Counterfactuals
 # ######################################################################################################################
 
 # TODO

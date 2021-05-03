@@ -49,6 +49,7 @@ twocol = ["red", "green"]
 threecol = ["green", "yellow", "red"]
 manycol = np.delete(np.array(list(mcolors.BASE_COLORS.values()) + list(mcolors.CSS4_COLORS.values())),
                     np.array([4, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 26]))
+colorblind = sns.color_palette("colorblind", as_cmap=True)
 # sel = np.arange(50); fig, ax = plt.subplots(figsize=(5,15)); ax.barh(sel.astype("str"), 1, color=manycol[sel])
 
 
@@ -552,7 +553,7 @@ def partial_dependence(estimator, df, features,
 
     def run_in_parallel(feature):
         if pd.api.types.is_numeric_dtype(df[feature]):
-            values = df_ref[feature].quantile(quantiles).values
+            values = np.unique(df_ref[feature].quantile(quantiles).values)
         else:
             values = df_ref[feature].unique()
 
@@ -621,7 +622,82 @@ def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
     return shap_values_agg
     
 
+# Plot partial dependence
+def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, refline=None, ylim=None,
+            color="red", min_width=0.2):
 
+    ax_act = ax
+    numeric_feature = pd.api.types.is_numeric_dtype(feature)
+
+    if numeric_feature:
+        # Lineplot
+        ax_act.plot(feature, yhat, marker=".", color=color)
+
+        # Background density plot
+        if feature_ref is not None:
+            ax2 = ax_act.twinx()
+            ax2.axis("off")
+            sns.distplot(feature_ref, color="grey", hist=False,
+                         kde=True, kde_kws={'shade': True, 'linewidth': 0},
+                         ax=ax2)
+        # Rugs
+        sns.rugplot(feature, color="grey", ax=ax_act)
+
+        # Refline
+        if refline is not None:
+            ax_act.axhline(refline, ls="dotted", color="black")  # priori line
+
+        # Axis style
+        ax_act.set_title(feature_name)
+        ax_act.set_xlabel("")
+        ax_act.set_ylabel(r"$\^y$")
+        if ylim is not None:
+            ax_act.set_ylim(ylim)
+
+        # Crossvalidation
+        if yhat_err is not None:
+            #ax_act.plot(feature, yhat - yhat_se, linestyle="--", color=color)
+            #ax_act.plot(feature,  yhat + yhat_se, linestyle="--", color=color)
+            ax_act.fill_between(feature, yhat - yhat_err, yhat + yhat_err, color=color, alpha=0.2)
+
+    else:
+        # Use DataFrame for calculation
+        df_plot = pd.DataFrame({feature_name: feature, "yhat": yhat})
+        if yhat_err is not None:
+            df_plot["yhat_err"] = yhat_err
+
+        # Distribution
+        if feature_ref is not None:
+            df_plot = df_plot.merge(pd.DataFrame({feature_name: feature_ref}).assign(count=1)
+                                    .groupby(feature_name, as_index=False)[["count"]].sum()
+                                    .assign(pct=lambda x: x["count"] / x["count"].sum())
+                                    .assign(width=lambda x: 0.9 * x["pct"] / x["pct"].max()), how="left")
+            df_plot[feature_name] = df_plot[feature_name] + " (" + (df_plot["pct"] * 100).round(1).astype(str) + "%)"
+            if min_width is not None:
+                df_plot["width"] = np.where(df_plot["width"] < min_width, min_width, df_plot["width"])
+
+            #ax2 = ax_act.twiny()
+            #ax2.barh(df_plot[feature_name], df_plot["pct"], color="grey", edgecolor="grey", alpha=0.5, linewidth=0)
+
+        # Refline
+        if refline is not None:
+            ax_act.axvline(refline, ls="dotted", color="black")  # priori line
+
+        # Bar plot
+        ax_act.barh(df_plot[feature_name], df_plot["yhat"],
+                    height=df_plot["width"] if feature_ref is not None else 0.8,
+                    color=color, edgecolor="black", alpha=0.5, linewidth=1)
+
+        # Axis style
+        ax_act.set_title(feature_name)
+        ax_act.set_xlabel(r"$\^y$")
+        if ylim is not None:
+            ax_act.set_xlim(ylim)
+
+        # Crossvalidation
+        if yhat_err is not None:
+            ax_act.errorbar(df_plot["yhat"], df_plot[feature_name], xerr=yhat_err,
+                            fmt=".", marker="s", capsize=5, fillstyle="none", color="grey")
 
 
 
