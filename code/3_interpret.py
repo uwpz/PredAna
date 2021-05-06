@@ -283,7 +283,7 @@ if plot:
                                 importance_se=df_varimp_plot["importance_se"],
                                 max_score_diff=df_varimp_plot["score_diff"][0].round(2),
                                 category=df_varimp_plot["category"],
-                                w=8, h=4, pdf=my.plotloc + "variable_importance__" + TARGET_TYPE + ".pdf")
+                                w=8, h=4, pdf=my.plotloc + "vi__" + TARGET_TYPE + ".pdf")
 
 
 ########################################################################################################################
@@ -322,32 +322,20 @@ for i, (i_train, i_test) in enumerate(cv_5foldsep.split(df_traintest,
                                      df_ref=df_train)
     for feature in features_top_test:
         d_pd_cv[feature] = d_pd_cv[feature].append(d_pd_run[feature].assign(run=i)).reset_index(drop=True)
-d_pd_err = {feature: df_tmp.drop(columns="run").groupby("value").sem()
+d_pd_err = {feature: df_tmp.drop(columns="run").groupby("value").std()
             for feature, df_tmp in d_pd_cv.items()}
 
-
 # Plot it
-# TODO: plot_grid from hmsPM
-
-n_row = 2
-n_col = 2
-figsize = (10,10)
-l_plots = []
+l_calls = list()
 for i, feature in enumerate(list(d_pd.keys())):
-    if i % (n_row * n_col) == 0:
-        fig, ax = plt.subplots(n_row, n_col, figsize=figsize)
-        l_plots = l_plots + list((fig, ax))
-        i_ax = 0
-    print(feature)
-    my.plot_pd(ax=ax.flat[i_ax],
-               feature_name=feature, feature=d_pd[feature]["value"],
-               yhat=d_pd[feature].iloc[:, 1].values,
-               yhat_err=d_pd_err[feature].iloc[:, 1].values,
-               feature_ref=df_test[feature],
-               refline=df_test[target_name + "_num"].mean(),
-               ylim=None, color=my.colorblind[1])
-    fig.tight_layout()
-    i_ax += 1
+    l_calls.append((my.plot_pd,
+                    dict(feature_name=feature, feature=d_pd[feature]["value"],
+                         yhat=d_pd[feature].iloc[:, 1].values,
+                         yhat_err=d_pd_err[feature].iloc[:, 1].values,
+                         feature_ref=df_test[feature],
+                         refline=df_test[target_name + "_num"].mean(),
+                         ylim=None, color=my.colorblind[1])))
+my.plot_func(l_calls, pdf_path=my.plotloc + "pd__" + TARGET_TYPE + ".pdf")
 
 
 

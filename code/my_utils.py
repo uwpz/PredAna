@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+from matplotlib.backends.backend_pdf import PdfPages
 import seaborn as sns
 from joblib import Parallel, delayed
 import copy
@@ -156,22 +157,25 @@ def value_counts(df, topn=5, dtypes=["object"]):
 
 
 # Univariate model performance
-def variable_performance(feature, target, splitter, scorer):
+def variable_performance(feature, target, scorer, splitter=KFold(5), groups=None):
 
     # Detect types
     target_type = dict(continuous="REGR", binary="CLASS", multiclass="MULTICLASS")[type_of_target(target)]
     numeric_feature = pd.api.types.is_numeric_dtype(feature)
 
     # Drop all missings
-    df_hlp = pd.DataFrame(feature).assign(target=target).dropna().reset_index(drop=True)
+    df_hlp = pd.DataFrame().assign(feature=feature, target=target)
+    if groups is not None:
+        df_hlp["groups_for_split"] = groups
+    df_hlp = df_hlp.dropna().reset_index(drop=True)
     
     # Calc performance
     perf = np.mean(cross_val_score(
         estimator=(LinearRegression() if target_type == "REGR" else LogisticRegression()),
-        X=(KBinsDiscretizer().fit_transform(df_hlp.iloc[:, [0]]) if numeric_feature else 
-           OneHotEncoder().fit_transform(df_hlp.iloc[:, [0]])),
+        X=(KBinsDiscretizer().fit_transform(df_hlp[["feature"]]) if numeric_feature else 
+           OneHotEncoder().fit_transform(df_hlp[["feature"]])),
         y=df_hlp["target"],
-        cv=splitter,
+        cv=splitter.split(df_hlp, groups=df_hlp["groups_for_split"] if groups is not None else None),
         scoring=scorer))
     
     return perf
@@ -620,7 +624,43 @@ def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
 
     # Return
     return shap_values_agg
-    
+   
+
+# Plot list of tuples (plot_call, kwargs)
+def plot_func(l_calls, n_row=2, n_col=3, figsize=(18, 12), pdf_path=None):
+
+    # Open pdf
+    if pdf_path is not None:
+        pdf_pages = PdfPages(pdf_path)
+    else:
+        pdf_pages = None
+
+    for i, (plot_func, kwargs) in enumerate(l_calls):
+        # Init new page
+        if i % (n_row * n_col) == 0:
+            fig, ax = plt.subplots(n_row, n_col, figsize=figsize)
+            i_ax = 0
+
+        # Plot call
+        plot_func(ax=ax.flat[i_ax], **kwargs)
+        fig.tight_layout()
+        i_ax += 1
+
+        # "Close" page
+        if (i_ax == n_row * n_col) or (i == len(l_calls) - 1):
+            # Remove unused axes
+            if (i == len(l_calls) - 1):
+                for k in range(i_ax, n_row * n_col):
+                    ax.flat[k].axis("off")
+
+            # Write pdf
+            if pdf_path is not None:
+                pdf_pages.savefig(fig)
+
+    # Close pdf
+    if pdf_path is not None:
+        pdf_pages.close()
+
 
 # Plot partial dependence
 def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, refline=None, ylim=None,
