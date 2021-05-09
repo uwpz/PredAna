@@ -227,11 +227,11 @@ if TARGET_TYPE == "REGR":
     print(np.isclose(shaphat, model.predict(df_explain[features])))
 elif TARGET_TYPE == "CLASS":
     print(np.isclose(my.scale_predictions(my.inv_logit(shaphat), b_sample, b_all),
-               model.predict_proba(df_explain[features])[:, 1]))
+                     model.predict_proba(df_explain[features])[:, 1]))
 else:
     print(np.isclose(my.scale_predictions(np.exp(shaphat) / np.exp(shaphat).sum(axis=1, keepdims=True), 
                                           b_sample, b_all),
-               model.predict_proba(df_explain[features])))
+                     model.predict_proba(df_explain[features])))
 
 
 
@@ -308,10 +308,9 @@ Parallel(n_jobs=my.n_jobs, max_nbytes='100M')(
     for feature in nume_top_test)
 '''
 
-# Todo: remove
-features_top_test = features
+#features_top_test = features
 
-# Calc PD
+# Dataframe based patial dependence which can use a reference dataset for value-grid defintion
 d_pd = my.partial_dependence(model, df_test[features], features_top_test, df_ref=df_train)
 
 # Crossvalidate
@@ -336,7 +335,6 @@ for i, feature in enumerate(list(d_pd.keys())):
                          refline=df_test[target_name + "_num"].mean(),
                          ylim=None, color=my.colorblind[1])))
 my.plot_func(l_calls, pdf_path=my.plotloc + "pd__" + TARGET_TYPE + ".pdf")
-
 
 
 ########################################################################################################################

@@ -8,6 +8,7 @@
 import os  # import sys; sys.path.append(os.getcwd())
 import numpy as np 
 import pandas as pd 
+import swifter
 import matplotlib.pyplot as plt  # ,matplotlib
 import pickle
 from importlib import reload
@@ -180,7 +181,7 @@ for TARGET_TYPE in TARGET_TYPES:
     #TARGET_TYPE = "CLASS"
     
     # Univariate variable performances
-    varperf_nume = df[np.append(nume, nume + "_BINNED")].apply(lambda x: (
+    varperf_nume = df[np.append(nume, nume + "_BINNED")].swifter.apply(lambda x: (
         my.variable_performance(x, df["cnt_" + TARGET_TYPE],
                                 splitter=ShuffleSplit(n_splits=1, test_size=0.2, random_state=42),
                                 scorer=my.d_scoring[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" else "auc"])))

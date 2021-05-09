@@ -264,7 +264,7 @@ class InSampleSplit:
         self.shuffle = shuffle
         self.random_state = random_state
 
-    def split(self, X, *args):
+    def split(self, X, *args, **kwargs):
         i_df = np.arange(X.shape[0])
         if self.shuffle:
             np.random.seed(self.random_state)
