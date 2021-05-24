@@ -36,10 +36,11 @@ import my_utils as my
 
 # Main parameter
 TARGET_TYPE = "CLASS"
-target_name = "cnt_" + TARGET_TYPE
+target_name = "cnt_" + TARGET_TYPE + "_num"
+id_name = "instant"
 
 # Plot
-plot = False
+plot = True
 #%matplotlib qt / %matplotlib inline  # activate standard/inline window
 #plt.ioff() / plt.ion()  # stop/start standard window
 #plt.plot(1, 1)
@@ -179,7 +180,7 @@ if plot:
 # Residuals
 if TARGET_TYPE in ["CLASS", "MULTICLASS"]:
     # "1 - yhat_of_true_class"
-    df_test["residual"] = 1 - yhat_test[np.arange(len(df_test[target_name])), df_test[target_name + "_num"]]
+    df_test["residual"] = 1 - yhat_test[np.arange(len(df_test[target_name])), df_test[target_name]]
 else:
     df_test["residual"] = df_test[target_name] - yhat_test
 df_test["abs_residual"] = df_test["residual"].abs()
@@ -216,6 +217,7 @@ shap_values = my.agg_shap_values(explainer(model[0].transform(X=df_explain[featu
 # Plot
 fig, ax = plt.subplots(1, 1)
 i = 0
+ax.set_title("id = " + str(df_explain[id_name].iloc[i]) + " (y = " + str(df_explain[target_name].iloc[i]) + ")")
 if TARGET_TYPE != "MULTICLASS":
     shap.plots.waterfall(shap_values[i], show=True)  # TDODO: replace "00"
 else:
@@ -308,7 +310,7 @@ Parallel(n_jobs=my.n_jobs, max_nbytes='100M')(
     for feature in nume_top_test)
 '''
 
-#features_top_test = features
+#features_top_test = nume
 
 # Dataframe based patial dependence which can use a reference dataset for value-grid defintion
 d_pd = my.partial_dependence(model, df_test[features], features_top_test, df_ref=df_train)
@@ -321,21 +323,35 @@ for i, (i_train, i_test) in enumerate(cv_5foldsep.split(df_traintest,
                                      df_ref=df_train)
     for feature in features_top_test:
         d_pd_cv[feature] = d_pd_cv[feature].append(d_pd_run[feature].assign(run=i)).reset_index(drop=True)
-d_pd_err = {feature: df_tmp.drop(columns="run").groupby("value").std()
+d_pd_err = {feature: df_tmp.drop(columns="run").groupby("value").std() * 10  # TODO
             for feature, df_tmp in d_pd_cv.items()}
 
 # Plot it
 l_calls = list()
 for i, feature in enumerate(list(d_pd.keys())):
+    i_cols = {"CLASS": 1, "REGR": 0, "MULTICLASS": [0, 1, 2]}
     l_calls.append((my.plot_pd,
                     dict(feature_name=feature, feature=d_pd[feature]["value"],
-                         yhat=d_pd[feature].iloc[:, 1].values,
-                         yhat_err=d_pd_err[feature].iloc[:, 1].values,
+                         yhat=d_pd[feature].iloc[:, i_cols[TARGET_TYPE]].values,
+                         yhat_err=d_pd_err[feature].iloc[:, i_cols[TARGET_TYPE]].values,
                          feature_ref=df_test[feature],
-                         refline=df_test[target_name + "_num"].mean(),
-                         ylim=None, color=my.colorblind[1])))
+                         reflines=df_test[target_name].mean(),
+                         #reflines=[df_test[target_name + "_num"].mean()],
+                         #reflines=(df_test.groupby(target_name + "_num")[id_name].count() / len(df_test)).values,
+                         legend_labels=(None if TARGET_TYPE != "MULTICLASS" 
+                                        else d_pd[feature].columns.values[:3]),
+                         ylim=None, color=my.colorblind)))
+#%%
 my.plot_func(l_calls, pdf_path=my.plotloc + "pd__" + TARGET_TYPE + ".pdf")
+#%%
 
+# Shap based partial dependence
+explainer = shap.TreeExplainer(model[1].estimator if type(model[1]) is my.ScalingEstimator else model[1])
+shap_values = my.agg_shap_values(explainer(model[0].transform(X=df_test[features])),
+                                 df_test[features],
+                                 len_nume=len(nume), l_map_onehot=model[0].transformers_[1][1].categories_,
+                                 round=2)
+shap_values.values.shape
 
 ########################################################################################################################
 # Explanations

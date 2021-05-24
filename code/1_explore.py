@@ -21,8 +21,9 @@ from sklearn.impute import SimpleImputer
 from sklearn.model_selection import KFold, ShuffleSplit, PredefinedSplit
 
 # Custom functions and classes
+from tmp import my_utils as my
 import my_utils as my
-
+my.dataloc
 
 # --- Parameter --------------------------------------------------------------------------
 
@@ -132,8 +133,8 @@ df[nume].describe()
 
 # --- Create nominal variables for all numeric variables (for linear models)  -----------------------------------------
 
-df[nume + "_BINNED"] = (df[nume].apply(lambda x: (pd.qcut(x, 5)  # alternative: sklearns KBinsDiscretizer
-                                                  .astype("str").replace("nan", np.nan))))
+df[nume + "_BINNED"] = (df[nume].swifter.apply(lambda x: (pd.qcut(x, 5)  # alternative: sklearns KBinsDiscretizer
+                                                          .astype("str").replace("nan", np.nan))))
 
 # Convert missings to own level ("(Missing)")
 df[nume + "_BINNED"] = df[nume + "_BINNED"].fillna("(Missing)")
@@ -216,9 +217,9 @@ nume = my.diff(nume, remove)
 # Hint: In case of having a detailed date variable this can be used as regression target here as well!
 
 # Univariate variable importance (again ONLY for non-missing observations!)
-varperf_nume_fold = df[nume].apply(lambda x: my.variable_performance(x, df["fold"],
-                                                                     splitter=my.InSampleSplit(),
-                                                                     scorer=my.d_scoring["CLASS"]["auc"]))
+varperf_nume_fold = df[nume].swifter.apply(lambda x: my.variable_performance(x, df["fold"],
+                                                                             splitter=my.InSampleSplit(),
+                                                                             scorer=my.d_scoring["CLASS"]["auc"]))
 
 
 # Plot: only variables with with highest importance
@@ -294,7 +295,7 @@ for TARGET_TYPE in TARGET_TYPES:
     # Univariate variable importance
     #varperf_cate = my.variable_performance(df[np.append(cate, ["MISS_" + miss])], df["cnt_" + TARGET_TYPE],
     #                                       ShuffleSplit(n_splits=1, test_size=0.2, random_state=42)).round(2)
-    varperf_cate = df[np.append(cate, ["MISS_" + miss])].apply(lambda x: (
+    varperf_cate = df[np.append(cate, ["MISS_" + miss])].swifter.apply(lambda x: (
         my.variable_performance(x, df["cnt_" + TARGET_TYPE],
                                 splitter=ShuffleSplit(n_splits=1, test_size=0.2, random_state=42),
                                 scorer=my.d_scoring[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" else "auc"])))
@@ -325,7 +326,7 @@ corr_cate_plot = (hms_plot.CorrelationPlotter(cutoff=0, w=8, h=6)
 
 # Hint: In case of having a detailed date variable this can be used as regression target here as well!
 # Univariate variable importance (again ONLY for non-missing observations!)
-varperf_cate_fold = df[np.append(cate, ["MISS_" + miss])].apply(lambda x: (
+varperf_cate_fold = df[np.append(cate, ["MISS_" + miss])].swifter.apply(lambda x: (
     my.variable_performance(x, df["fold"],
                             splitter=my.InSampleSplit(),
                             scorer=my.d_scoring["CLASS"]["auc"])))

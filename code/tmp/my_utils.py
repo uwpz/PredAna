@@ -255,7 +255,7 @@ class KFoldSep(KFold):
     def split(self, X, y=None, groups=None, test_fold=None):
         i_test_fold = np.arange(len(X))[test_fold]
         for i_train, i_test in super().split(X, y, groups):
-            yield i_train[~np.isin(i_train, i_test_fold)], i_test[np.isin(i_test, i_test_fold)]
+            yield i_train[~np.isin(i_train, i_test)], i_test[np.isin(i_test, i_test_fold)]
   
   
 # Splitter: test==train fold, i.e. in-sample selection, needed for quick change of cross-validation code to non-cv
@@ -585,35 +585,6 @@ def partial_dependence(estimator, df, features,
     return d_pd
 
 
-'''
-def partial_dependence_single(estimator, df, feature,
-                       df_ref=None, quantiles=np.arange(0.05, 1, 0.1),):
-    #estimator=model; df=df_test[features]; feature=features_top_test[0]; df_ref=None; quantiles=np.arange(0.05, 1, 0.1)
-
-    if df_ref is None:
-        df_ref = df
-
-    if pd.api.types.is_numeric_dtype(df[feature]):
-        values = np.unique(df_ref[feature].quantile(quantiles).values)
-    else:
-        values = df_ref[feature].unique()
-
-    df_copy = df.copy()  # save original data
-
-    # Loop over values
-    df_pd = pd.DataFrame()
-    for value in values:
-        df_copy[feature] = value
-        df_pd = df_pd.append(
-            pd.DataFrame(np.mean(estimator.predict_proba(df_copy) if hasattr(estimator, "predict_proba") else
-                                 estimator.predict(df_copy), axis=0).reshape(1, -1)))
-    df_pd.columns = ["yhat"] if estimator._estimator_type == "regressor" else estimator.classes_
-    df_pd["value"] = values
-
-    return df_pd
-'''
-
-
 # Aggregate onehot encoded shapely values
 def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
     '''
@@ -692,37 +663,29 @@ def plot_func(l_calls, n_row=2, n_col=3, figsize=(18, 12), pdf_path=None):
 
 
 # Plot partial dependence
-def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, reflines=None, ylim=None,
-            legend_labels=None, color="red", min_width=0.2):
+def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, refline=None, ylim=None,
+            color="red", min_width=0.2):
 
     ax_act = ax
     numeric_feature = pd.api.types.is_numeric_dtype(feature)
-    #if yhat.ndim == 1: 
-    #    yhat = yhat.reshape(-1, 1)
 
     if numeric_feature:
         # Lineplot
-        if yhat.ndim > 1:
-            for i in range(yhat.shape[1]):
-                ax_act.plot(feature, yhat[:, i], marker=".", color=color[i], label=legend_labels[i])
-            ax_act.legend(loc="best")
-        else:
-            ax_act.plot(feature, yhat, marker=".", color=color)
+        ax_act.plot(feature, yhat, marker=".", color=color)
 
         # Background density plot
         if feature_ref is not None:
             ax2 = ax_act.twinx()
             ax2.axis("off")
-            sns.kdeplot(feature_ref, color="grey", 
-                        shade=True, linewidth=0,  # hist=False, kde=True, kde_kws={'shade': True, 'linewidth': 0},
-                        ax=ax2)
+            sns.distplot(feature_ref, color="grey", hist=False,
+                         kde=True, kde_kws={'shade': True, 'linewidth': 0},
+                         ax=ax2)
         # Rugs
         sns.rugplot(feature, color="grey", ax=ax_act)
 
         # Refline
-        if reflines is not None:
-            for refline in reflines:
-                ax_act.axhline(refline, ls="dotted", color="black")  # priori line
+        if refline is not None:
+            ax_act.axhline(refline, ls="dotted", color="black")  # priori line
 
         # Axis style
         ax_act.set_title(feature_name)
@@ -733,25 +696,17 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
 
         # Crossvalidation
         if yhat_err is not None:
-            if yhat.ndim > 1:
-                for i in range(yhat.shape[1]):
-                    ax_act.fill_between(feature, 
-                                        yhat[:, i] - yhat_err[:, i], yhat[:, i] + yhat_err[:, i], 
-                                        color=color[i], alpha=0.2)
-            else:
-                ax_act.fill_between(feature, yhat - yhat_err, yhat + yhat_err, color=color, alpha=0.2)
-                #ax_act.plot(feature, yhat - yhat_se, linestyle="--", color=color)
-                # #ax_act.plot(feature,  yhat + yhat_se, linestyle="--", color=color)
-            pass
+            #ax_act.plot(feature, yhat - yhat_se, linestyle="--", color=color)
+            #ax_act.plot(feature,  yhat + yhat_se, linestyle="--", color=color)
+            ax_act.fill_between(feature, yhat - yhat_err, yhat + yhat_err, color=color, alpha=0.2)
 
     else:
         # Use DataFrame for calculation
-        #df_plot = pd.DataFrame({feature_name: feature, "yhat": yhat})
-        #if yhat_err is not None:
-        #    df_plot["yhat_err"] = yhat_err
+        df_plot = pd.DataFrame({feature_name: feature, "yhat": yhat})
+        if yhat_err is not None:
+            df_plot["yhat_err"] = yhat_err
 
         # Distribution
-        '''
         if feature_ref is not None:
             df_plot = df_plot.merge(pd.DataFrame({feature_name: feature_ref}).assign(count=1)
                                     .groupby(feature_name, as_index=False)[["count"]].sum()
@@ -761,28 +716,17 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
             if min_width is not None:
                 df_plot["width"] = np.where(df_plot["width"] < min_width, min_width, df_plot["width"])
 
-            ax2 = ax_act.twiny()
-            ax2.barh(df_plot[feature_name], df_plot["pct"], color="grey", edgecolor="grey", alpha=0.5, linewidth=0)
-        '''
+            #ax2 = ax_act.twiny()
+            #ax2.barh(df_plot[feature_name], df_plot["pct"], color="grey", edgecolor="grey", alpha=0.5, linewidth=0)
+
+        # Refline
+        if refline is not None:
+            ax_act.axvline(refline, ls="dotted", color="black")  # priori line
 
         # Bar plot
-        if yhat.ndim == 1:
-            ax_act.barh(feature, yhat, 
-                        #height=df_plot["width"] if feature_ref is not None else 0.8,
-                        color=color, edgecolor="black", alpha=0.5, linewidth=1)
-        else:
-            a_left = np.zeros(yhat.shape[0])
-            for i in range(yhat.shape[1]):
-                ax_act.barh(feature, yhat[:, i],
-                            left=a_left,
-                            #height=df_plot["width"] if feature_ref is not None else 0.8,
-                            color=color[i], edgecolor="black", alpha=0.5, linewidth=1)
-                a_left = a_left + yhat[:, i]
-                
-        # Refline
-        if reflines is not None:
-            for refline in np.cumsum(reflines):
-                ax_act.axvline(refline, ls="dotted", color="black")  # priori line
+        ax_act.barh(df_plot[feature_name], df_plot["yhat"],
+                    height=df_plot["width"] if feature_ref is not None else 0.8,
+                    color=color, edgecolor="black", alpha=0.5, linewidth=1)
 
         # Axis style
         ax_act.set_title(feature_name)
@@ -792,15 +736,8 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
 
         # Crossvalidation
         if yhat_err is not None:
-            if yhat.ndim == 1:
-                ax_act.errorbar(feature, yhat, xerr=yhat_err,
-                                fmt=".", marker="s", capsize=5, fillstyle="none", color="grey")
-            else:
-                a_left = np.zeros(yhat.shape[0])
-                for i in range(yhat.shape[1]):
-                    ax_act.errorbar(yhat[:, i] + a_left, feature, xerr=yhat_err[:, i],
-                                    fmt=".", marker="s", capsize=5, fillstyle="none", color="grey")
-                    a_left = a_left + yhat[:, i]
+            ax_act.errorbar(df_plot["yhat"], df_plot[feature_name], xerr=yhat_err,
+                            fmt=".", marker="s", capsize=5, fillstyle="none", color="grey")
 
 
 
