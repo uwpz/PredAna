@@ -75,6 +75,10 @@ def diff(a, b):
     return np.setdiff1d(a, b, True)
 
 
+def logit(p):
+    return(np.log(p / (1 - p)))
+
+
 def inv_logit(p):
     return np.exp(p) / (1 + np.exp(p))
 
@@ -511,39 +515,35 @@ def variable_importance(estimator, df, y, features, scoring=None, n_jobs=None, r
 
 
 # Plot permutation base variable importance
-def plot_variable_importance(features, importance,
+def plot_variable_importance(ax,
+                             features, importance,
                              importance_cum=None, importance_se=None, max_score_diff=None,
                              category=None,
                              category_label="Importance",
-                             category_color_palette=sns.xkcd_palette(["blue", "orange", "red"]),
-                             w=18, h=12, pdf=None):
+                             category_color_palette=sns.xkcd_palette(["blue", "orange", "red"])):
 
-    fig, ax = plt.subplots(1, 1)
+    ax_act = ax
     sns.barplot(importance, features, hue=category,
-                palette=category_color_palette, dodge=False, ax=ax)
-    ax.set_title("Top{0: .0f} Feature Importances".format(len(features)))
-    ax.set_xlabel(r"permutation importance")
+                palette=category_color_palette, dodge=False, ax=ax_act)
+    ax_act.set_title("Top{0: .0f} Feature Importances".format(len(features)))
+    ax_act.set_xlabel(r"permutation importance")
     if max_score_diff is not None:
-        ax.set_xlabel(ax.get_xlabel() + "(100 = " + str(max_score_diff) + r" score-$\Delta$)")
+        ax_act.set_xlabel(ax_act.get_xlabel() + "(100 = " + str(max_score_diff) + r" score-$\Delta$)")
     if importance_cum is not None:
-        ax.plot(importance_cum, features, color="black", marker="o")
-        ax.set_xlabel(ax.get_xlabel() + " /\n" + r"cumulative in % (-$\bullet$-)")
+        ax_act.plot(importance_cum, features, color="black", marker="o")
+        ax_act.set_xlabel(ax.get_xlabel() + " /\n" + r"cumulative in % (-$\bullet$-)")
     if importance_se is not None:
-        ax.errorbar(x=importance, y=features, xerr=importance_se,
-                    fmt=".", marker="s", fillstyle="none", color="grey")
-        ax.set_title(ax.get_title() + r" (incl. SE (-$\boxminus$-))")
+        ax_act.errorbar(x=importance, y=features, xerr=importance_se,
+                        fmt=".", marker="s", fillstyle="none", color="grey")
+        ax_act.set_title(ax.get_title() + r" (incl. SE (-$\boxminus$-))")
     '''
     if column_score_diff is not None:
-        ax2 = ax.twiny()
+        ax2 = ax_act.twiny()
         ax2.errorbar(x=df_varimp[column_score_diff], y=df_varimp[column_feature],
                      xerr=df_varimp[column_score_diff_se]*5,
                     fmt=".", marker="s", fillstyle="none", color="grey")
         ax2.grid(False)
     '''
-    fig.tight_layout()
-    fig.set_size_inches(w=w, h=h)
-    if pdf:
-        fig.savefig(pdf)
 
 
 # Dataframe based patial dependence which can use a reference dataset for value-grid defintion
@@ -671,7 +671,7 @@ def plot_func(l_calls, n_row=2, n_col=3, figsize=(18, 12), pdf_path=None):
             i_ax = 0
 
         # Plot call
-        plot_func(ax=ax.flat[i_ax], **kwargs)
+        plot_func(ax=ax.flat[i_ax] if n_row*n_col>1 else ax, **kwargs)
         fig.tight_layout()
         i_ax += 1
 
@@ -692,7 +692,7 @@ def plot_func(l_calls, n_row=2, n_col=3, figsize=(18, 12), pdf_path=None):
 
 
 # Plot partial dependence
-def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, reflines=None, ylim=None,
+def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, refline=None, ylim=None,
             legend_labels=None, color="red", min_width=0.2):
 
     ax_act = ax
@@ -701,13 +701,9 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
     #    yhat = yhat.reshape(-1, 1)
 
     if numeric_feature:
+        
         # Lineplot
-        if yhat.ndim > 1:
-            for i in range(yhat.shape[1]):
-                ax_act.plot(feature, yhat[:, i], marker=".", color=color[i], label=legend_labels[i])
-            ax_act.legend(loc="best")
-        else:
-            ax_act.plot(feature, yhat, marker=".", color=color)
+        ax_act.plot(feature, yhat, marker=".", color=color)
 
         # Background density plot
         if feature_ref is not None:
@@ -720,9 +716,8 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
         sns.rugplot(feature, color="grey", ax=ax_act)
 
         # Refline
-        if reflines is not None:
-            for refline in reflines:
-                ax_act.axhline(refline, ls="dotted", color="black")  # priori line
+        if refline is not None:
+            ax_act.axhline(refline, ls="dotted", color="black")  # priori line
 
         # Axis style
         ax_act.set_title(feature_name)
@@ -733,25 +728,15 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
 
         # Crossvalidation
         if yhat_err is not None:
-            if yhat.ndim > 1:
-                for i in range(yhat.shape[1]):
-                    ax_act.fill_between(feature, 
-                                        yhat[:, i] - yhat_err[:, i], yhat[:, i] + yhat_err[:, i], 
-                                        color=color[i], alpha=0.2)
-            else:
-                ax_act.fill_between(feature, yhat - yhat_err, yhat + yhat_err, color=color, alpha=0.2)
-                #ax_act.plot(feature, yhat - yhat_se, linestyle="--", color=color)
-                # #ax_act.plot(feature,  yhat + yhat_se, linestyle="--", color=color)
-            pass
+            ax_act.fill_between(feature, yhat - yhat_err, yhat + yhat_err, color=color, alpha=0.2)
 
     else:
         # Use DataFrame for calculation
-        #df_plot = pd.DataFrame({feature_name: feature, "yhat": yhat})
-        #if yhat_err is not None:
-        #    df_plot["yhat_err"] = yhat_err
+        df_plot = pd.DataFrame({feature_name: feature, "yhat": yhat}).sort_values(feature_name).reset_index(drop=True)
+        if yhat_err is not None:
+            df_plot["yhat_err"] = yhat_err
 
         # Distribution
-        '''
         if feature_ref is not None:
             df_plot = df_plot.merge(pd.DataFrame({feature_name: feature_ref}).assign(count=1)
                                     .groupby(feature_name, as_index=False)[["count"]].sum()
@@ -760,29 +745,17 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
             df_plot[feature_name] = df_plot[feature_name] + " (" + (df_plot["pct"] * 100).round(1).astype(str) + "%)"
             if min_width is not None:
                 df_plot["width"] = np.where(df_plot["width"] < min_width, min_width, df_plot["width"])
-
-            ax2 = ax_act.twiny()
-            ax2.barh(df_plot[feature_name], df_plot["pct"], color="grey", edgecolor="grey", alpha=0.5, linewidth=0)
-        '''
+            #ax2 = ax_act.twiny()
+            #ax2.barh(df_plot[feature_name], df_plot["pct"], color="grey", edgecolor="grey", alpha=0.5, linewidth=0)
 
         # Bar plot
-        if yhat.ndim == 1:
-            ax_act.barh(feature, yhat, 
-                        #height=df_plot["width"] if feature_ref is not None else 0.8,
-                        color=color, edgecolor="black", alpha=0.5, linewidth=1)
-        else:
-            a_left = np.zeros(yhat.shape[0])
-            for i in range(yhat.shape[1]):
-                ax_act.barh(feature, yhat[:, i],
-                            left=a_left,
-                            #height=df_plot["width"] if feature_ref is not None else 0.8,
-                            color=color[i], edgecolor="black", alpha=0.5, linewidth=1)
-                a_left = a_left + yhat[:, i]
+        ax_act.barh(df_plot[feature_name], df_plot["yhat"],
+                    height=df_plot["width"] if feature_ref is not None else 0.8,
+                    color=color, edgecolor="black", alpha=0.5, linewidth=1)
                 
         # Refline
-        if reflines is not None:
-            for refline in np.cumsum(reflines):
-                ax_act.axvline(refline, ls="dotted", color="black")  # priori line
+        if refline is not None:
+            ax_act.axvline(refline, ls="dotted", color="black")  # priori line
 
         # Axis style
         ax_act.set_title(feature_name)
@@ -792,16 +765,109 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
 
         # Crossvalidation
         if yhat_err is not None:
-            if yhat.ndim == 1:
-                ax_act.errorbar(feature, yhat, xerr=yhat_err,
-                                fmt=".", marker="s", capsize=5, fillstyle="none", color="grey")
-            else:
-                a_left = np.zeros(yhat.shape[0])
-                for i in range(yhat.shape[1]):
-                    ax_act.errorbar(yhat[:, i] + a_left, feature, xerr=yhat_err[:, i],
-                                    fmt=".", marker="s", capsize=5, fillstyle="none", color="grey")
-                    a_left = a_left + yhat[:, i]
+            ax_act.errorbar(df_plot["yhat"], df_plot[feature_name], xerr=df_plot["yhat_err"],
+                            fmt=".", marker="s", capsize=5, fillstyle="none", color="grey")
 
+
+# Plot shap
+def plot_shap(ax, shap_values, index, id, 
+              y_str=None, yhat_str=None, 
+              show_intercept=True, show_prediction=True, 
+              color=["blue", "red"], n_top=10, multiclass_index=None):
+
+    ax_act = ax
+
+    # Subset in case of multiclass
+    if multiclass_index is not None:
+        base_values = shap_values.base_values[:, multiclass_index]
+        values = shap_values.values[:, :, multiclass_index]
+    else:
+        base_values = shap_values.base_values
+        values = shap_values.values
+
+    # Shap values to dataframe
+    df_shap = (pd.concat([pd.DataFrame({"variable": "intercept",
+                                        "variable_value": np.nan,
+                                        "shap": base_values[index]}, index=[0]),
+                          pd.DataFrame({"variable": shap_values.feature_names[index],
+                                        "variable_value": shap_values.data[index],
+                                        "shap": values[index]})
+                          .assign(tmp=lambda x: x["shap"].abs())
+                          .sort_values("tmp", ascending=False)
+                          .drop(columns="tmp")])
+               .assign(yhat=lambda x: x["shap"].cumsum()))  # here a my.inv_logit might be added
+
+    # Prepare for waterfall plot
+    df_plot = (df_shap.assign(offset=lambda x: x["yhat"].shift(1).fillna(0),
+                              bar=lambda x: x["yhat"] - x["offset"],
+                              color=lambda x: np.where(x["variable"] == "intercept", "grey",
+                                                       np.where(x["bar"] > 0, color[1], color[0])),
+                              bar_label=lambda x: np.where(x["variable"] == "intercept",
+                                                           x["variable"],
+                                                           x["variable"] + " = " + x["variable_value"].astype("str")))
+               .loc[:, ["bar_label", "bar", "offset", "color"]])
+
+    # Aggreagte non-n_top shap values
+    if n_top is not None:
+        df_plot = pd.concat([df_plot.iloc[:(n_top + 1)],
+                            pd.DataFrame(dict(bar_label="... the rest",
+                                              bar=df_plot.iloc[(n_top + 1):]["bar"].sum(),
+                                              offset=df_plot.iloc[(n_top + 1)]["offset"]),
+                                         index=[0])
+                            .assign(color=lambda x: np.where(x["bar"] > 0, color[1], color[0]))])
+
+    # Add final prediction
+    df_plot = (pd.concat([df_plot, pd.DataFrame(dict(bar_label="prediction", bar=df_plot["bar"].sum(),
+                                                     offset=0, color="black"), index=[0])])
+               .reset_index(drop=True))
+
+    # Remove intercept and final prediction
+    if not show_intercept:
+        df_plot = df_plot.query("bar_label != 'intercept'")
+    if not show_prediction:
+        df_plot = df_plot.query("bar_label != 'prediction'")
+    #df_plot = df_plot.query('bar_label not in ["intercept", "Prediction"]')
+    #x_min = (df_plot["offset"]).min()
+    #x_max = (df_plot["offset"]).max()
+    x_min = min(0, (df_plot["offset"]).min())
+    x_max = max(0, (df_plot["offset"]).max())
+
+    # Plot bars
+    ax_act.barh(df_plot["bar_label"], df_plot["bar"], left=df_plot["offset"], color=df_plot["color"],
+                alpha=0.5,
+                edgecolor="black")
+
+    # Set axis limits
+    ax_act.set_xlim(x_min - 0.1 * (x_max - x_min),
+                    x_max + 0.1 * (x_max - x_min))
+
+    # Annotate
+    for i in range(len(df_plot)):
+        # Text
+        ax_act.annotate(df_plot.iloc[i]["bar"].round(3),
+                        (df_plot.iloc[i]["offset"] + max(0, df_plot.iloc[i]["bar"]) + np.ptp(ax_act.get_xlim()) * 0.02,
+                        df_plot.iloc[i]["bar_label"]),
+                        # if ~df_plot.iloc[i][["bar_label"]].isin(["intercept", "Prediction"])[0] else "right",
+                        ha="left",
+                        va="center", size=10,
+                        color="black")  # "white" if i == (len(df_plot) - 1) else "black")
+
+        # Lines
+        if i < (len(df_plot) - 1):
+            df_line = pd.concat([pd.DataFrame(dict(x=df_plot.iloc[i]["offset"] + df_plot.iloc[i]["bar"],
+                                                   y=df_plot.iloc[i]["bar_label"]), index=[0]),
+                                pd.DataFrame(dict(x=df_plot.iloc[i]["offset"] + df_plot.iloc[i]["bar"],
+                                                  y=df_plot.iloc[i + 1]["bar_label"]), index=[0])])
+            ax_act.plot(df_line["x"], df_line["y"], color="black", linestyle=":")
+
+    # Title and labels
+    title = "id = " + str(id)
+    if y_str is not None:
+        title = title + " (y = " + y_str + ")"
+    if yhat_str is not None:
+        title = title + r" ($\^ y$ = " + yhat_str + ")"
+    ax_act.set_title(title)  
+    ax_act.set_xlabel("shap")
 
 
     

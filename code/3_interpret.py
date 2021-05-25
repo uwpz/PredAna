@@ -9,7 +9,8 @@ from hmsPM.utils import select_features_by_scale
 import numpy as np
 import pandas as pd
 import matplotlib
-import matplotlib.pyplot as plt  # ,matplotlib
+import matplotlib.pyplot as plt
+from pandas.core.frame import DataFrame  # ,matplotlib
 import seaborn as sns
 import pickle
 import hmsPM.plotting as hms_plot
@@ -36,11 +37,11 @@ import my_utils as my
 
 # Main parameter
 TARGET_TYPE = "CLASS"
-target_name = "cnt_" + TARGET_TYPE + "_num"
+target_name = "cnt_" + TARGET_TYPE + "_num" if TARGET_TYPE != "REGR" else "cnt_REGR"
 id_name = "instant"
 
 # Plot
-plot = True
+plot = False
 #%matplotlib qt / %matplotlib inline  # activate standard/inline window
 #plt.ioff() / plt.ion()  # stop/start standard window
 #plt.plot(1, 1)
@@ -97,8 +98,8 @@ df_traintest = pd.concat([df_train, df_test]).reset_index(drop=True)
 cv_5foldsep = my.KFoldSep(5)
 split_5foldsep = cv_5foldsep.split(df_traintest, test_fold=(df_traintest["fold"] == "test"))
 i_train, i_test = next(split_5foldsep)
-print("TRAIN-fold:", df_traintest["fold"].iloc[i_train].value_counts(), i_train[:5])
-print("TEST-fold:", df_traintest["fold"].iloc[i_test].value_counts(), i_test[:5])
+print("TRAIN-fold:\n", df_traintest["fold"].iloc[i_train].value_counts(), i_train[:5])
+print("TEST-fold:\n", df_traintest["fold"].iloc[i_test].value_counts(), i_test[:5])
 
     
 # ######################################################################################################################
@@ -203,40 +204,6 @@ if TARGET_TYPE == "REGR":
                file_path=my.plotloc + "diagnosis_absolute_residual__" + TARGET_TYPE + ".pdf"))
 
 
-# ---- Explain bad predictions ------------------------------------------------------------------------------------
-
-# Get shap for n_worst predicted records
-n_worst = 10
-df_explain = df_test.sort_values("abs_residual", ascending=False).iloc[:n_worst, :]
-explainer = shap.TreeExplainer(model[1].estimator if type(model[1]) is my.ScalingEstimator else model[1])
-shap_values = my.agg_shap_values(explainer(model[0].transform(X=df_explain[features])),
-                                 df_explain[features],
-                                 len_nume=len(nume), l_map_onehot=model[0].transformers_[1][1].categories_, 
-                                 round=2)
-
-# Plot
-fig, ax = plt.subplots(1, 1)
-i = 0
-ax.set_title("id = " + str(df_explain[id_name].iloc[i]) + " (y = " + str(df_explain[target_name].iloc[i]) + ")")
-if TARGET_TYPE != "MULTICLASS":
-    shap.plots.waterfall(shap_values[i], show=True)  # TDODO: replace "00"
-else:
-    shap.plots.waterfall(shap_values[i][:, df_explain[target_name + "_num"].iloc[i]], show=True)  
-
-# Check
-shaphat = shap_values.values.sum(axis=1) + shap_values.base_values
-if TARGET_TYPE == "REGR":
-    print(np.isclose(shaphat, model.predict(df_explain[features])))
-elif TARGET_TYPE == "CLASS":
-    print(np.isclose(my.scale_predictions(my.inv_logit(shaphat), b_sample, b_all),
-                     model.predict_proba(df_explain[features])[:, 1]))
-else:
-    print(np.isclose(my.scale_predictions(np.exp(shaphat) / np.exp(shaphat).sum(axis=1, keepdims=True), 
-                                          b_sample, b_all),
-                     model.predict_proba(df_explain[features])))
-
-
-
 ########################################################################################################################
 # Variable Importance
 ########################################################################################################################
@@ -279,36 +246,38 @@ df_varimp_test["category"] = pd.cut(df_varimp_test["importance"], [-np.inf, 10, 
 # Plot Importance
 df_varimp_plot = (df_varimp_test.query("feature in @features_top_test")
                   .merge(df_varimp_test_se, how="left", on="feature"))
+l_calls = [(my.plot_variable_importance,
+            dict(features=df_varimp_plot["feature"],
+                 importance=df_varimp_plot["importance"],
+                 importance_cum=df_varimp_plot["importance_cum"],
+                 importance_se=df_varimp_plot["importance_se"],
+                 max_score_diff=df_varimp_plot["score_diff"][0].round(2),
+                 category=df_varimp_plot["category"]))]
 if plot:
-    my.plot_variable_importance(df_varimp_plot["feature"], df_varimp_plot["importance"],
-                                importance_cum=df_varimp_plot["importance_cum"],
-                                importance_se=df_varimp_plot["importance_se"],
-                                max_score_diff=df_varimp_plot["score_diff"][0].round(2),
-                                category=df_varimp_plot["category"],
-                                w=8, h=4, pdf=my.plotloc + "vi__" + TARGET_TYPE + ".pdf")
+    my.plot_func(l_calls, n_row=1, n_col=1, figsize=(8, 4), pdf_path=my.plotloc + "vi__" + TARGET_TYPE + ".pdf")
 
 
 ########################################################################################################################
 # Partial Dependance
 ########################################################################################################################
 
-'''
-# Scikit's partial dependence
-# cate
-cate_top_test = my.diff(features_top_test, nume)
-partial_dependence(model, df_test[features],
-                   features=cate_top_test[0],  # just one feature per call is possible!
-                   grid_resolution=np.inf,  # workaround to take all members
-                   kind="average")
-# nume
-nume_top_test = my.diff(features_top_test, cate)
-from joblib import Parallel, delayed
-Parallel(n_jobs=my.n_jobs, max_nbytes='100M')(
-    delayed(partial_dependence)(model, df_test[features], feature,
-                                grid_resolution=5,  # 5 quantiles
-                                kind="average")
-    for feature in nume_top_test)
-'''
+def skip():
+    # Scikit's partial dependence
+    # cate
+    cate_top_test = my.diff(features_top_test, nume)
+    partial_dependence(model, df_test[features],
+                    features=cate_top_test[0],  # just one feature per call is possible!
+                    grid_resolution=np.inf,  # workaround to take all members
+                    kind="average")
+    # nume
+    nume_top_test = my.diff(features_top_test, cate)
+    from joblib import Parallel, delayed
+    Parallel(n_jobs=my.n_jobs, max_nbytes='100M')(
+        delayed(partial_dependence)(model, df_test[features], feature,
+                                    grid_resolution=5,  # 5 quantiles
+                                    kind="average")
+        for feature in nume_top_test)
+
 
 #features_top_test = nume
 
@@ -323,28 +292,25 @@ for i, (i_train, i_test) in enumerate(cv_5foldsep.split(df_traintest,
                                      df_ref=df_train)
     for feature in features_top_test:
         d_pd_cv[feature] = d_pd_cv[feature].append(d_pd_run[feature].assign(run=i)).reset_index(drop=True)
-d_pd_err = {feature: df_tmp.drop(columns="run").groupby("value").std() * 10  # TODO
+d_pd_err = {feature: df_tmp.drop(columns="run").groupby("value").std()
             for feature, df_tmp in d_pd_cv.items()}
 
 # Plot it
 l_calls = list()
 for i, feature in enumerate(list(d_pd.keys())):
-    i_cols = {"CLASS": 1, "REGR": 0, "MULTICLASS": [0, 1, 2]}
+    i_col = {"CLASS": 1, "MULTICLASS": 2}
     l_calls.append((my.plot_pd,
                     dict(feature_name=feature, feature=d_pd[feature]["value"],
-                         yhat=d_pd[feature].iloc[:, i_cols[TARGET_TYPE]].values,
-                         yhat_err=d_pd_err[feature].iloc[:, i_cols[TARGET_TYPE]].values,
+                         yhat=d_pd[feature].iloc[:, i_col[TARGET_TYPE]].values,
+                         yhat_err=d_pd_err[feature].iloc[:, i_col[TARGET_TYPE]].values,
                          feature_ref=df_test[feature],
-                         reflines=df_test[target_name].mean(),
-                         #reflines=[df_test[target_name + "_num"].mean()],
-                         #reflines=(df_test.groupby(target_name + "_num")[id_name].count() / len(df_test)).values,
-                         legend_labels=(None if TARGET_TYPE != "MULTICLASS" 
-                                        else d_pd[feature].columns.values[:3]),
-                         ylim=None, color=my.colorblind)))
-#%%
-my.plot_func(l_calls, pdf_path=my.plotloc + "pd__" + TARGET_TYPE + ".pdf")
-#%%
+                         refline=yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR" else yhat_test.mean(),
+                         ylim=None, color=my.colorblind[i_col[TARGET_TYPE]])))
+if plot:
+    my.plot_func(l_calls, pdf_path=my.plotloc + "pd__" + TARGET_TYPE + ".pdf")
+    
 
+# HEREEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
 # Shap based partial dependence
 explainer = shap.TreeExplainer(model[1].estimator if type(model[1]) is my.ScalingEstimator else model[1])
 shap_values = my.agg_shap_values(explainer(model[0].transform(X=df_test[features])),
@@ -352,6 +318,51 @@ shap_values = my.agg_shap_values(explainer(model[0].transform(X=df_test[features
                                  len_nume=len(nume), l_map_onehot=model[0].transformers_[1][1].categories_,
                                  round=2)
 shap_values.values.shape
+shap_values.data.shape
+
+
+
+
+
+
+
+
+if df_ref is None:
+    df_ref = df
+
+#def run_in_parallel(feature):
+feature = shap_values.feature_names[0][0]
+
+if pd.api.types.is_numeric_dtype(df[feature]):
+    values = np.unique(df_ref[feature].quantile(quantiles).values)
+else:
+    values = df_ref[feature].unique()
+
+        df_copy = df.copy()  # save original data
+
+        #yhat_pd = np.array([]).reshape(0, 1 if estimator._estimator_type == "regressor" else len(estimator.classes_))
+        df_return = pd.DataFrame()
+        for value in values:
+            df_copy[feature] = value
+            df_return = df_return.append(
+                pd.DataFrame(np.mean(estimator.predict_proba(df_copy) if hasattr(estimator, "predict_proba") else
+                                     estimator.predict(df_copy), axis=0).reshape(1, -1)))
+        # yhat_pd = np.append(yhat_pd,
+        #                     np.mean(estimator.predict_proba(df_pd) if hasattr(estimator, "predict_proba") else
+        #                             estimator.predict(df_pd), axis=0).reshape(1, -1), axis=0)
+        df_return.columns = ["yhat"] if estimator._estimator_type == "regressor" else estimator.classes_
+        df_return["value"] = values
+
+        return df_return
+
+    # Run in parallel and append
+    l_pd = (Parallel(n_jobs=n_jobs, max_nbytes='100M')(delayed(run_in_parallel)(feature)
+                                                       for feature in features))
+    d_pd = dict(zip(features, l_pd))
+    return d_pd
+
+
+
 
 ########################################################################################################################
 # Explanations
@@ -360,35 +371,77 @@ shap_values.values.shape
 # ---- Explain bad predictions ------------------------------------------------------------------------------------
 
 # Filter data
-n_select = 10
+n_select = 6
 i_worst = df_test.sort_values("abs_residual", ascending=False).iloc[:n_select, :].index.values
 i_best = df_test.sort_values("abs_residual", ascending=True).iloc[:n_select, :].index.values
 i_random = df_test.sample(n=n_select).index.values
-i_explain = np.unique(np.concatenate([i_worst, i_best, i_random]))
-yhat_explain = yhat_test[i_explain]
+i_explain = np.concatenate([i_worst, i_best, i_random])
 df_explain = df_test.iloc[i_explain, :].reset_index(drop=True)
+y_explain = df_explain[target_name]
+yhat_explain = yhat_test[i_explain, np.argmax(yhat_test, axis=1)]
 
 # Get shap
 explainer = shap.TreeExplainer(model[1].estimator if type(model[1]) == my.ScalingEstimator else model[1])
 shap_values = explainer(model[0].transform(X=df_explain[features]))
-shap_values_agg = my.agg_shap_values(shap_values, df_explain[features],
-                                     len_nume=len(nume), l_map_onehot=model[0].transformers_[1][1].categories_,
-                                     round=2)
+shap_values = my.agg_shap_values(explainer(model[0].transform(X=df_explain[features])),
+                                 df_explain[features],
+                                 len_nume=len(nume), l_map_onehot=model[0].transformers_[1][1].categories_,
+                                 round=2)  # aggregate onehot
 
-# Plot
-fig, ax = plt.subplots(1, 1)
-shap.plots.waterfall(shap_values_agg[0], show=True)
+# Rescale due to undersampling
+if TARGET_TYPE == "CLASS":
+    shap_values.base_values = my.logit(my.scale_predictions(my.inv_logit(shap_values.base_values), b_sample, b_all))
+if TARGET_TYPE == "MULTICLASS":
+    shap_values.base_values = np.log(my.scale_predictions(np.exp(shap_values.base_values) /
+                                                          np.exp(shap_values.base_values).sum(axis=1, keepdims=True),
+                                                          b_sample, b_all))
 
 # Check
+shaphat = shap_values.values.sum(axis=1) + shap_values.base_values
 if TARGET_TYPE == "REGR":
-    np.isclose(shap_values.values.sum(axis=1) + explainer.expected_value,
-               model.predict(df_explain[features]))
+    print(np.isclose(shaphat, model.predict(df_explain[features])))
+elif TARGET_TYPE == "CLASS":
+    print(np.isclose(my.inv_logit(shaphat), model.predict_proba(df_explain[features])[:, 1]))
 else:
-    np.isclose(my.scale_predictions(my.inv_logit(shap_values.values.sum(axis=1) + explainer.expected_value),
-                                    b_sample, b_all),
-               model.predict_proba(df_explain[features])[:, 1])
+    print(np.isclose(np.exp(shaphat) / np.exp(shaphat).sum(axis=1, keepdims=True),
+                     model.predict_proba(df_explain[features])))
 
-plt.close("all")
+'''
+# Plot default waterfall
+fig, ax = plt.subplots(1, 1)
+i = 1
+i_col = {"CLASS": 1, "MULTICLASS": df_explain[target_name].iloc[i]}
+y_str = (str(df_explain[target_name].iloc[i]) if TARGET_TYPE != "REGR" 
+         else format(df_explain[target_name].iloc[i], ".2f"))
+yhat_str = (format(yhat_explain[i, i_col[TARGET_TYPE]], ".3f") if TARGET_TYPE != "REGR" 
+            else format(yhat_explain[i], ".2f"))
+ax.set_title("id = " + str(df_explain[id_name].iloc[i]) + " (y = " + y_str + ")" + r" ($\^ y$ = " + yhat_str + ")")
+if TARGET_TYPE != "MULTICLASS":
+    shap.plots.waterfall(shap_values[i], show=True)  # TDODO: replace "00"
+else:
+    shap.plots.waterfall(shap_values[i][:, df_explain[target_name].iloc[i]], show=True)
+'''
+
+# Plot it
+l_calls = list()
+for i in range(len(df_explain)):
+    y_str = (str(df_explain[target_name].iloc[i]) if TARGET_TYPE != "REGR"
+             else format(df_explain[target_name].iloc[i], ".2f"))
+    i_col = {"CLASS": 1, "MULTICLASS": df_explain[target_name].iloc[i]}
+    yhat_str = (format(yhat_explain[i, i_col[TARGET_TYPE]], ".3f") if TARGET_TYPE != "REGR"
+                else format(yhat_explain[i], ".2f"))
+    l_calls.append((my.plot_shap,
+                    dict(shap_values=shap_values, 
+                         index=i, 
+                         id=df_explain[id_name][i],
+                         y_str=y_str,
+                         yhat_str=yhat_str,
+                         multiclass_index=None if TARGET_TYPE != "MULTICLASS" else i_col[TARGET_TYPE])))
+if plot:
+    my.plot_func(l_calls, pdf_path=my.plotloc + "shap__" + TARGET_TYPE + ".pdf")
+
+
+
 
 
 # ######################################################################################################################
@@ -396,4 +449,6 @@ plt.close("all")
 # ######################################################################################################################
 
 # TODO
+
+plt.close("all")
 
