@@ -556,7 +556,7 @@ def partial_dependence(estimator, df, features,
         df_ref = df
 
     def run_in_parallel(feature):
-        if pd.api.types.is_numeric_dtype(df[feature]):
+        if pd.api.types.is_numeric_dtype(df_ref[feature]):
             values = np.unique(df_ref[feature].quantile(quantiles).values)
         else:
             values = df_ref[feature].unique()
@@ -585,33 +585,37 @@ def partial_dependence(estimator, df, features,
     return d_pd
 
 
-'''
-def partial_dependence_single(estimator, df, feature,
-                       df_ref=None, quantiles=np.arange(0.05, 1, 0.1),):
-    #estimator=model; df=df_test[features]; feature=features_top_test[0]; df_ref=None; quantiles=np.arange(0.05, 1, 0.1)
+# Aggregate shapley to partial dependence
+def shap2pd(shap_values, features,
+            df_ref=None, n_bins=10, n_jobs=4):
 
     if df_ref is None:
-        df_ref = df
+        df_ref = pd.DataFrame(shap_values.data, columns=shap_values.feature_names[0])
 
-    if pd.api.types.is_numeric_dtype(df[feature]):
-        values = np.unique(df_ref[feature].quantile(quantiles).values)
-    else:
-        values = df_ref[feature].unique()
+    d_pd = dict()
+    for feature in features:
+        # Location of feature in shap_values
+        i_feature = np.argwhere(shap_values.feature_names[0] == feature)[0][0]
+        intercept = shap_values.base_values[0]
 
-    df_copy = df.copy()  # save original data
+        if pd.api.types.is_numeric_dtype(df_ref[feature]):
+            kbinsdiscretizer_fit = KBinsDiscretizer(n_bins=n_bins, encode="ordinal").fit(df_ref[[feature]])
+            bin_edges = kbinsdiscretizer_fit.bin_edges_
+            #TODO: format as param
+            bin_labels = np.array([format(bin_edges[0][i], ".2f") + " - " + format(bin_edges[0][i+1], ".2f")
+                                   for i in range(len(bin_edges[0]) - 1)])
+            df_shap = pd.DataFrame({"value": bin_labels[(kbinsdiscretizer_fit
+                                                         .transform(shap_values.data[:, [i_feature]])[:, 0])
+                                                        .astype(int)],
+                                    "yhat": shap_values.values[:, i_feature]})  # TODO: MULTICLASS
+        else:
+            df_shap = pd.DataFrame({"value": shap_values.data[:, i_feature],
+                                   "yhat": shap_values.values[:, i_feature]})
 
-    # Loop over values
-    df_pd = pd.DataFrame()
-    for value in values:
-        df_copy[feature] = value
-        df_pd = df_pd.append(
-            pd.DataFrame(np.mean(estimator.predict_proba(df_copy) if hasattr(estimator, "predict_proba") else
-                                 estimator.predict(df_copy), axis=0).reshape(1, -1)))
-    df_pd.columns = ["yhat"] if estimator._estimator_type == "regressor" else estimator.classes_
-    df_pd["value"] = values
-
-    return df_pd
-'''
+        df_shap_agg = (df_shap.groupby("value").mean().reset_index()
+                       .assign(yhat=lambda x: x["yhat"] + intercept))
+        d_pd[feature] = df_shap_agg
+    return d_pd
 
 
 # Aggregate onehot encoded shapely values

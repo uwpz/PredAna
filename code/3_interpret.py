@@ -5,6 +5,7 @@
 # --- Packages ------------------------------------------------------------------------------------
 
 # General
+from joblib import Parallel, delayed
 from hmsPM.utils import select_features_by_scale
 import numpy as np
 import pandas as pd
@@ -36,7 +37,7 @@ import my_utils as my
 # --- Parameter --------------------------------------------------------------------------
 
 # Main parameter
-TARGET_TYPE = "CLASS"
+TARGET_TYPE = "MULTICLASS"
 target_name = "cnt_" + TARGET_TYPE + "_num" if TARGET_TYPE != "REGR" else "cnt_REGR"
 id_name = "instant"
 
@@ -261,25 +262,22 @@ if plot:
 # Partial Dependance
 ########################################################################################################################
 
-def skip():
-    # Scikit's partial dependence
-    # cate
-    cate_top_test = my.diff(features_top_test, nume)
-    partial_dependence(model, df_test[features],
-                    features=cate_top_test[0],  # just one feature per call is possible!
-                    grid_resolution=np.inf,  # workaround to take all members
-                    kind="average")
-    # nume
-    nume_top_test = my.diff(features_top_test, cate)
-    from joblib import Parallel, delayed
-    Parallel(n_jobs=my.n_jobs, max_nbytes='100M')(
-        delayed(partial_dependence)(model, df_test[features], feature,
-                                    grid_resolution=5,  # 5 quantiles
-                                    kind="average")
-        for feature in nume_top_test)
-
-
-#features_top_test = nume
+'''
+# Scikit's partial dependence
+# cate
+cate_top_test = my.diff(features_top_test, nume)
+partial_dependence(model, df_test[features],
+                   features=cate_top_test[0],  # just one feature per call is possible!
+                   grid_resolution=np.inf,  # workaround to take all members
+                   kind="average")
+# nume
+nume_top_test = my.diff(features_top_test, cate)
+Parallel(n_jobs=my.n_jobs, max_nbytes='100M')(
+    delayed(partial_dependence)(model, df_test[features], feature,
+                                grid_resolution=5,  # 5 quantiles
+                                kind="average")
+     for feature in nume_top_test)
+'''
 
 # Dataframe based patial dependence which can use a reference dataset for value-grid defintion
 d_pd = my.partial_dependence(model, df_test[features], features_top_test, df_ref=df_train)
@@ -298,7 +296,7 @@ d_pd_err = {feature: df_tmp.drop(columns="run").groupby("value").std()
 # Plot it
 l_calls = list()
 for i, feature in enumerate(list(d_pd.keys())):
-    i_col = {"CLASS": 1, "MULTICLASS": 2}
+    i_col = {"REGR": 0, "CLASS": 1, "MULTICLASS": 2}
     l_calls.append((my.plot_pd,
                     dict(feature_name=feature, feature=d_pd[feature]["value"],
                          yhat=d_pd[feature].iloc[:, i_col[TARGET_TYPE]].values,
@@ -310,58 +308,24 @@ if plot:
     my.plot_func(l_calls, pdf_path=my.plotloc + "pd__" + TARGET_TYPE + ".pdf")
     
 
-# HEREEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE
+
 # Shap based partial dependence
+# Get shap for test data
 explainer = shap.TreeExplainer(model[1].estimator if type(model[1]) is my.ScalingEstimator else model[1])
 shap_values = my.agg_shap_values(explainer(model[0].transform(X=df_test[features])),
                                  df_test[features],
                                  len_nume=len(nume), l_map_onehot=model[0].transformers_[1][1].categories_,
                                  round=2)
-shap_values.values.shape
-shap_values.data.shape
-
-
-
-
-
-
-
-
-if df_ref is None:
-    df_ref = df
-
-#def run_in_parallel(feature):
-feature = shap_values.feature_names[0][0]
-
-if pd.api.types.is_numeric_dtype(df[feature]):
-    values = np.unique(df_ref[feature].quantile(quantiles).values)
-else:
-    values = df_ref[feature].unique()
-
-        df_copy = df.copy()  # save original data
-
-        #yhat_pd = np.array([]).reshape(0, 1 if estimator._estimator_type == "regressor" else len(estimator.classes_))
-        df_return = pd.DataFrame()
-        for value in values:
-            df_copy[feature] = value
-            df_return = df_return.append(
-                pd.DataFrame(np.mean(estimator.predict_proba(df_copy) if hasattr(estimator, "predict_proba") else
-                                     estimator.predict(df_copy), axis=0).reshape(1, -1)))
-        # yhat_pd = np.append(yhat_pd,
-        #                     np.mean(estimator.predict_proba(df_pd) if hasattr(estimator, "predict_proba") else
-        #                             estimator.predict(df_pd), axis=0).reshape(1, -1), axis=0)
-        df_return.columns = ["yhat"] if estimator._estimator_type == "regressor" else estimator.classes_
-        df_return["value"] = values
-
-        return df_return
-
-    # Run in parallel and append
-    l_pd = (Parallel(n_jobs=n_jobs, max_nbytes='100M')(delayed(run_in_parallel)(feature)
-                                                       for feature in features))
-    d_pd = dict(zip(features, l_pd))
-    return d_pd
-
-
+# Rescale due to undersampling
+if TARGET_TYPE == "CLASS":
+    shap_values.base_values = my.logit(my.scale_predictions(my.inv_logit(shap_values.base_values), b_sample, b_all))
+if TARGET_TYPE == "MULTICLASS":
+    shap_values.base_values = np.log(my.scale_predictions(np.exp(shap_values.base_values) /
+                                                          np.exp(shap_values.base_values).sum(axis=1, keepdims=True),
+                                                          b_sample, b_all))
+# Aggregate shap
+d_pd_shap = my.shap2pd(shap_values, features_top_test, df_ref=df_train)
+'''
 
 
 ########################################################################################################################
