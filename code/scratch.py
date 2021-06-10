@@ -5,6 +5,10 @@
 # --- Packages ------------------------------------------------------------------------------------
 
 # General
+from scipy.interpolate import splev, splrep, make_interp_spline
+from scipy.interpolate import splev, splrep
+import seaborn as sns
+import matplotlib.colors as mcolors
 import os  # sys.path.append(os.getcwd())
 import numpy as np
 import pandas as pd
@@ -140,13 +144,26 @@ save_plot_grids_to_pdf(plot_grids, plotloc + "fancy.pdf")
 '''
 
 
-from sklearn.metrics import *
+fig, ax = plt.subplots(1, 1)
+ax_act = ax
+tmp_scale = 1
+tmp_cmap = mcolors.LinearSegmentedColormap.from_list("wh_bl_yl_rd",
+                                                     [(1, 1, 1, 0), "blue", "yellow", "red"])
+p = ax_act.hexbin(df["temp"], df["cnt_REGR"],
+                  gridsize=(int(50 * tmp_scale), 50),
+                  cmap=tmp_cmap)
+plt.colorbar(p, ax=ax_act)
+sns.regplot(x, y, lowess=True, scatter=False, color="black", ax=ax_act)
 
+df_tmp = df[["cnt_REGR", "temp"]].groupby("temp")[["cnt_REGR"]].mean().reset_index().sort_values("temp")
 
-def tmp_auc(y_true, y_pred):
-    #pdb.set_trace()
-    print(len(y_true))
-    if y_pred.ndim == 2:
-        if y_pred.shape[1] == 2:
-            y_pred = y_pred[:, 1]
-    return roc_auc_score(y_true, y_pred, multi_class="ovr")
+x = df_tmp["temp"].values
+y = df_tmp["cnt_REGR"].values
+spl = splrep(x, y)
+inter = make_interp_spline(x, y)
+x2 = np.quantile(x, np.arange(0.01, 1, 0.01))
+y2 = splev(x2, spl)
+y2
+y2 = inter(x2)
+y2
+ax_act.plot(x2, y2, color="r")

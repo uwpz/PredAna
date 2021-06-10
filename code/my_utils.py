@@ -41,14 +41,14 @@ plotloc = "../output/"
 n_jobs = 4
 
 # Util
-#sns.set(style="whitegrid")
+sns.set(style="whitegrid")
 pd.set_option('display.width', 320)
 pd.set_option('display.max_columns', 20)
 
 # Other
 twocol = ["red", "green"]
 threecol = ["green", "yellow", "red"]
-manycol = np.delete(np.array(list(mcolors.BASE_COLORS.values()) + list(mcolors.CSS4_COLORS.values())),
+manycol = np.delete(np.array(list(mcolors.BASE_COLORS.values()) + list(mcolors.CSS4_COLORS.values()), dtype=object),
                     np.array([4, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 26]))
 colorblind = sns.color_palette("colorblind", as_cmap=True)
 # sel = np.arange(50); fig, ax = plt.subplots(figsize=(5,15)); ax.barh(sel.astype("str"), 1, color=manycol[sel])
@@ -587,7 +587,7 @@ def partial_dependence(estimator, df, features,
 
 # Aggregate shapley to partial dependence
 def shap2pd(shap_values, features,
-            df_ref=None, n_bins=10, n_jobs=4):
+            df_ref=None, n_bins=10, format_string=".2f"):
 
     if df_ref is None:
         df_ref = pd.DataFrame(shap_values.data, columns=shap_values.feature_names[0])
@@ -598,20 +598,24 @@ def shap2pd(shap_values, features,
         i_feature = np.argwhere(shap_values.feature_names[0] == feature)[0][0]
         intercept = shap_values.base_values[0]
 
+        # Numeric features: Create bins
         if pd.api.types.is_numeric_dtype(df_ref[feature]):
             kbinsdiscretizer_fit = KBinsDiscretizer(n_bins=n_bins, encode="ordinal").fit(df_ref[[feature]])
             bin_edges = kbinsdiscretizer_fit.bin_edges_
-            #TODO: format as param
-            bin_labels = np.array([format(bin_edges[0][i], ".2f") + " - " + format(bin_edges[0][i+1], ".2f")
+            bin_labels = np.array([format(bin_edges[0][i], format_string) + " - " + 
+                                   format(bin_edges[0][i + 1], format_string)
                                    for i in range(len(bin_edges[0]) - 1)])
             df_shap = pd.DataFrame({"value": bin_labels[(kbinsdiscretizer_fit
                                                          .transform(shap_values.data[:, [i_feature]])[:, 0])
                                                         .astype(int)],
                                     "yhat": shap_values.values[:, i_feature]})  # TODO: MULTICLASS
+            
+        # Categorical feature
         else:
             df_shap = pd.DataFrame({"value": shap_values.data[:, i_feature],
-                                   "yhat": shap_values.values[:, i_feature]})
+                                    "yhat": shap_values.values[:, i_feature]})
 
+        # Aggregate and add intercept
         df_shap_agg = (df_shap.groupby("value").mean().reset_index()
                        .assign(yhat=lambda x: x["yhat"] + intercept))
         d_pd[feature] = df_shap_agg

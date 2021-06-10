@@ -5,19 +5,13 @@
 # --- Packages ------------------------------------------------------------------------------------
 
 # General
-from joblib import Parallel, delayed
-from hmsPM.utils import select_features_by_scale
 import numpy as np
 import pandas as pd
-import matplotlib
-import matplotlib.pyplot as plt
-from pandas.core.frame import DataFrame  # ,matplotlib
+import matplotlib.pyplot as plt 
 import seaborn as sns
 import pickle
-import hmsPM.plotting as hms_plot
-import os  # sys.path.append(os.getcwd())
 from importlib import reload 
-import time
+import hmsPM.plotting as hms_plot
 
 # Special
 from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
@@ -25,7 +19,6 @@ from sklearn.model_selection import cross_validate
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.base import clone
-from sklearn.inspection import permutation_importance, partial_dependence
 import xgboost as xgb
 import shap
 
@@ -37,18 +30,16 @@ import my_utils as my
 # --- Parameter --------------------------------------------------------------------------
 
 # Main parameter
-TARGET_TYPE = "MULTICLASS"
-target_name = "cnt_" + TARGET_TYPE + "_num" if TARGET_TYPE != "REGR" else "cnt_REGR"
+TARGET_TYPE = "CLASS"
+target_name = "cnt_" + TARGET_TYPE + "_num"
+metric = "spear" if TARGET_TYPE == "REGR" else "auc"
 id_name = "instant"
 
 # Plot
-plot = False
+plot = True
 #%matplotlib qt / %matplotlib inline  # activate standard/inline window
 #plt.ioff() / plt.ion()  # stop/start standard window
 #plt.plot(1, 1)
-
-# Metric to use
-metric = "spear" if TARGET_TYPE == "REGR" else "auc"
 
 # Load results from exploration
 df = nume_standard = cate_standard = cate_binned = nume_encoded = None
@@ -130,7 +121,7 @@ print(pd.DataFrame(yhat_test).describe())
 if plot:
     perf_plot = (hms_plot.MultiPerformancePlotter(n_bins=5, w=18, h=12)
                  .plot(y=df_test[target_name], y_hat=yhat_test,
-                       file_path=my.plotloc + "performance__" + TARGET_TYPE + ".pdf"))
+                       file_path=my.plotloc + "3__performance__" + TARGET_TYPE + ".pdf"))
 
 # Check performance for crossvalidated fits
 d_cv = cross_validate(model, df_traintest[features], df_traintest[target_name],
@@ -170,7 +161,7 @@ else:
 if plot:
     perf_plot_top = (hms_plot.MultiPerformancePlotter(n_bins=5, w=18, h=12)
                      .plot(y=df_test[target_name], y_hat=yhat_top,
-                           file_path=my.plotloc + "performance_top__" + TARGET_TYPE + ".pdf"))
+                           file_path=my.plotloc + "3__performance_top__" + TARGET_TYPE + ".pdf"))
 
 
 ########################################################################################################################
@@ -194,7 +185,7 @@ if plot:
                                               n_rows=2, n_cols=3, w=18, h=12)
         .plot(features=df_test[features_top_train],
               target=df_test["residual"],
-              file_path=my.plotloc + "diagnosis_residual__" + TARGET_TYPE + ".pdf"))
+              file_path=my.plotloc + "3__diagnosis_residual__" + TARGET_TYPE + ".pdf"))
 
 # Absolute residuals
 if TARGET_TYPE == "REGR":
@@ -202,7 +193,7 @@ if TARGET_TYPE == "REGR":
         (hms_plot.MultiFeatureDistributionPlotter(target_limits=None, n_rows=2, n_cols=3, w=18, h=12)
          .plot(features=df_test[features_top_train],
                target=df_test["abs_residual"],
-               file_path=my.plotloc + "diagnosis_absolute_residual__" + TARGET_TYPE + ".pdf"))
+               file_path=my.plotloc + "3__diagnosis_absolute_residual__" + TARGET_TYPE + ".pdf"))
 
 
 ########################################################################################################################
@@ -210,6 +201,7 @@ if TARGET_TYPE == "REGR":
 ########################################################################################################################
 
 # --- Default Variable Importance: uses gain sum of all trees ----------------------------------------------------------
+
 xgb.plot_importance(model[1].estimator if type(model[1]) == my.ScalingEstimator else model[1])
 
 
@@ -255,7 +247,7 @@ l_calls = [(my.plot_variable_importance,
                  max_score_diff=df_varimp_plot["score_diff"][0].round(2),
                  category=df_varimp_plot["category"]))]
 if plot:
-    my.plot_func(l_calls, n_row=1, n_col=1, figsize=(8, 4), pdf_path=my.plotloc + "vi__" + TARGET_TYPE + ".pdf")
+    my.plot_func(l_calls, n_row=1, n_col=1, figsize=(8, 4), pdf_path=my.plotloc + "3__vi__" + TARGET_TYPE + ".pdf")
 
 
 ########################################################################################################################
@@ -264,6 +256,8 @@ if plot:
 
 '''
 # Scikit's partial dependence
+from sklearn.inspection import permutation_importance, partial_dependence
+
 # cate
 cate_top_test = my.diff(features_top_test, nume)
 partial_dependence(model, df_test[features],
@@ -278,6 +272,8 @@ Parallel(n_jobs=my.n_jobs, max_nbytes='100M')(
                                 kind="average")
      for feature in nume_top_test)
 '''
+
+# --- Standard PD --------------------------------------------------------------------------------------------------
 
 # Dataframe based patial dependence which can use a reference dataset for value-grid defintion
 d_pd = my.partial_dependence(model, df_test[features], features_top_test, df_ref=df_train)
@@ -305,17 +301,19 @@ for i, feature in enumerate(list(d_pd.keys())):
                          refline=yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR" else yhat_test.mean(),
                          ylim=None, color=my.colorblind[i_col[TARGET_TYPE]])))
 if plot:
-    my.plot_func(l_calls, pdf_path=my.plotloc + "pd__" + TARGET_TYPE + ".pdf")
+    my.plot_func(l_calls, pdf_path=my.plotloc + "3__pd__" + TARGET_TYPE + ".pdf")
     
 
+'''
+# --- Shap based PD --------------------------------------------------------------------------------------------------
 
-# Shap based partial dependence
 # Get shap for test data
 explainer = shap.TreeExplainer(model[1].estimator if type(model[1]) is my.ScalingEstimator else model[1])
 shap_values = my.agg_shap_values(explainer(model[0].transform(X=df_test[features])),
                                  df_test[features],
                                  len_nume=len(nume), l_map_onehot=model[0].transformers_[1][1].categories_,
                                  round=2)
+
 # Rescale due to undersampling
 if TARGET_TYPE == "CLASS":
     shap_values.base_values = my.logit(my.scale_predictions(my.inv_logit(shap_values.base_values), b_sample, b_all))
@@ -325,8 +323,21 @@ if TARGET_TYPE == "MULTICLASS":
                                                           b_sample, b_all))
 # Aggregate shap
 d_pd_shap = my.shap2pd(shap_values, features_top_test, df_ref=df_train)
-'''
 
+# Plot it
+l_calls = list()
+for i, feature in enumerate(list(d_pd_shap.keys())):
+    i_col = {"REGR": 0, "CLASS": 1, "MULTICLASS": 2}
+    l_calls.append((my.plot_pd,
+                    dict(feature_name=feature, 
+                         feature=d_pd_shap[feature]["value"],
+                         yhat=d_pd_shap[feature]["yhat"],
+                         #feature_ref=df_test[feature],
+                         #refline=yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR" else yhat_test.mean(),
+                         ylim=None, color=my.colorblind[i_col[TARGET_TYPE]])))
+if plot:
+    my.plot_func(l_calls, pdf_path=my.plotloc + "3__pd_shap__" + TARGET_TYPE + ".pdf")
+'''
 
 ########################################################################################################################
 # Explanations
@@ -342,7 +353,10 @@ i_random = df_test.sample(n=n_select).index.values
 i_explain = np.concatenate([i_worst, i_best, i_random])
 df_explain = df_test.iloc[i_explain, :].reset_index(drop=True)
 y_explain = df_explain[target_name]
-yhat_explain = yhat_test[i_explain, np.argmax(yhat_test, axis=1)]
+if TARGET_TYPE != "REGR":
+    yhat_explain = yhat_test[i_explain, np.argmax(yhat_test, axis=1)]
+else:
+    yhat_explain = yhat_test[i_explain]
 
 # Get shap
 explainer = shap.TreeExplainer(model[1].estimator if type(model[1]) == my.ScalingEstimator else model[1])
@@ -402,9 +416,7 @@ for i in range(len(df_explain)):
                          yhat_str=yhat_str,
                          multiclass_index=None if TARGET_TYPE != "MULTICLASS" else i_col[TARGET_TYPE])))
 if plot:
-    my.plot_func(l_calls, pdf_path=my.plotloc + "shap__" + TARGET_TYPE + ".pdf")
-
-
+    my.plot_func(l_calls, pdf_path=my.plotloc + "3__shap__" + TARGET_TYPE + ".pdf")
 
 
 

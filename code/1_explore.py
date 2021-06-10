@@ -5,34 +5,33 @@
 # --- Packages --------------------------------------------------------------------------
 
 # General
-import os  # import sys; sys.path.append(os.getcwd())
 import numpy as np 
 import pandas as pd 
 import swifter
-import matplotlib.pyplot as plt  # ,matplotlib
+import matplotlib.pyplot as plt
 import pickle
 from importlib import reload
 import time
+import hmsPM.plotting as hms_plot
 
 # Special
-import hmsPM.plotting as hms_plot
 from category_encoders import target_encoder
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import KFold, ShuffleSplit, PredefinedSplit
 
 # Custom functions and classes
-from tmp import my_utils as my
+#from tmp import my_utils as my
 import my_utils as my
-my.dataloc
+
 
 # --- Parameter --------------------------------------------------------------------------
 
 # Plot 
 plot = True
+%matplotlib
 #%matplotlib qt / %matplotlib inline  # activate standard/inline window
-#plt.ioff() / plt.ion()  # stop/starrt standard window
+plt.ioff() #/ plt.ion()  # stop/start standard window
 #plt.plot(1, 1)
-
 
 # Specific parameters 
 TARGET_TYPES = ["REGR", "CLASS", "MULTICLASS"]
@@ -132,9 +131,9 @@ df[nume].describe()
 
 
 # --- Create nominal variables for all numeric variables (for linear models)  -----------------------------------------
-
-df[nume + "_BINNED"] = (df[nume].swifter.apply(lambda x: (pd.qcut(x, 5)  # alternative: sklearns KBinsDiscretizer
-                                                          .astype("str").replace("nan", np.nan))))
+df[nume + "_BINNED"] = df[nume].swifter.apply(lambda x: (pd.qcut(x, 5)))
+df[nume + "_BINNED"] = df[nume + "_BINNED"].apply(lambda x: (("q" + x.cat.codes.astype("str") + " " + x.astype("str"))
+                                                             .replace("nan", np.nan)))
 
 # Convert missings to own level ("(Missing)")
 df[nume + "_BINNED"] = df[nume + "_BINNED"].fillna("(Missing)")
@@ -162,7 +161,7 @@ for TARGET_TYPE in TARGET_TYPES:
                                                                      show_regplot=True)
                             .plot(features=df[nume],
                                   target=df["cnt_" + TARGET_TYPE],
-                                  file_path=my.plotloc + "distr_nume__" + TARGET_TYPE + ".pdf"))
+                                  file_path=my.plotloc + "1__distr_nume__" + TARGET_TYPE + ".pdf"))
     print(time.time() - start)
     
 # Winsorize (hint: plot again before deciding for log-trafo)
@@ -179,7 +178,7 @@ if len(tolog):
 # --- Final variable information ---------------------------------------------------------------------------------------
 
 for TARGET_TYPE in TARGET_TYPES:
-    #TARGET_TYPE = "CLASS"
+    #TARGET_TYPE = "REGR"
     
     # Univariate variable performances
     varperf_nume = df[np.append(nume, nume + "_BINNED")].swifter.apply(lambda x: (
@@ -195,7 +194,7 @@ for TARGET_TYPE in TARGET_TYPES:
                             .plot(features=df[np.column_stack((nume, nume + "_BINNED")).ravel()],
                                   target=df["cnt_" + TARGET_TYPE],
                                   varimps=varperf_nume.round(2),
-                                  file_path=my.plotloc + "distr_nume_final__" + TARGET_TYPE + ".pdf"))
+                                  file_path=my.plotloc + "1__distr_nume_final__" + TARGET_TYPE + ".pdf"))
 
 
 # --- Removing variables -----------------------------------------------------------------------------------------------
@@ -207,7 +206,7 @@ nume = my.diff(nume, remove)
 # Remove highly/perfectly (>=98%) correlated (the ones with less NA!)
 df[nume].describe()
 corr_plot = (hms_plot.CorrelationPlotter(cutoff=0, w=8, h=6)
-             .plot(features=df[nume], file_path=my.plotloc + "corr_nume.pdf"))
+             .plot(features=df[nume], file_path=my.plotloc + "1__corr_nume.pdf"))
 remove = ["atemp"]
 nume = my.diff(nume, remove)
 
@@ -231,7 +230,7 @@ if len(nume_toprint):
                                     .plot(features=df[nume_toprint],
                                           target=df["fold"],
                                           varimps=varperf_nume_fold,
-                                          file_path=my.plotloc + "distr_nume_folddep.pdf"))
+                                          file_path=my.plotloc + "1__distr_nume_folddep.pdf"))
 
 
 # --- Missing indicator and imputation (must be done at the end of all processing)--------------------------------------
@@ -306,8 +305,8 @@ for TARGET_TYPE in TARGET_TYPES:
         distr_cate_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n_cols=3, w=18, h=12)
                             .plot(features=df[np.append(cate, ["MISS_" + miss])],
                                   target=df["cnt_" + TARGET_TYPE],
-                                  varimps=varperf_cate,
-                                  file_path=my.plotloc + "distr_cate__" + TARGET_TYPE + ".pdf"))
+                                  varimps=varperf_cate.round(2),
+                                  file_path=my.plotloc + "1__distr_cate__" + TARGET_TYPE + ".pdf"))
 
 
 # --- Removing variables -----------------------------------------------------------------------------------------------
@@ -319,7 +318,7 @@ toomany = my.diff(toomany, ["xxx"])
 # Remove highly/perfectly (>=99%) correlated (the ones with less levels!)
 corr_cate_plot = (hms_plot.CorrelationPlotter(cutoff=0, w=8, h=6)
                   .plot(features=df[np.append(cate, ["MISS_" + miss])],
-                        file_path=my.plotloc + "corr_cate.pdf"))
+                        file_path=my.plotloc + "1__corr_cate.pdf"))
 
 
 # --- Time/fold depedency ----------------------------------------------------------------------------------------------
@@ -339,7 +338,7 @@ if len(nume_toprint):
                                     .plot(features=df[cate_toprint],
                                           target=df["fold"],
                                           varimps=varperf_cate_fold,
-                                          file_path=my.plotloc + "distr_cate_folddep.pdf"))
+                                          file_path=my.plotloc + "1__distr_cate_folddep.pdf"))
 
 
 
@@ -348,7 +347,7 @@ if len(nume_toprint):
 ########################################################################################################################
 
 # --- Add numeric target -----------------------------------------------------------------------------------------------------
-
+df["cnt_REGR_num"] = df["cnt_REGR"]
 df["cnt_CLASS_num"] = df["cnt_CLASS"].str.slice(0, 1).astype("int")
 df["cnt_MULTICLASS_num"] = df["cnt_MULTICLASS"].str.slice(0, 1).astype("int")
 
