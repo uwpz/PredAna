@@ -38,6 +38,7 @@ import my_utils as my
 TARGET_TYPE = "CLASS"
 target_name = "cnt_" + TARGET_TYPE + "_num"
 metric = "spear" if TARGET_TYPE == "REGR" else "auc"
+scoring = my.d_scoring[TARGET_TYPE]
 
 # Load results from exploration
 df = nume_standard = cate_standard = cate_binned = nume_encoded = None
@@ -111,7 +112,7 @@ fit = (GridSearchCV(SGDRegressor(penalty="ElasticNet", warm_start=True) if TARGE
                      "l1_ratio": [0, 0.5, 1]},
                     cv=cv_index.split(df_tune),
                     refit=False,
-                    scoring=my.d_scoring[TARGET_TYPE],
+                    scoring=scoring,
                     return_train_score=True,
                     n_jobs=my.n_jobs)
        .fit(X=X_binned,
@@ -128,7 +129,7 @@ if TARGET_TYPE in ["CLASS", "MULTICLASS"]:
                         {"C": [2 ** x for x in range(2, -5, -1)]},
                         cv=cv_index.split(df_tune),
                         refit=False,
-                        scoring=my.d_scoring[TARGET_TYPE],
+                        scoring=scoring,
                         return_train_score=True,
                         n_jobs=my.n_jobs)
            .fit(X=X_binned,
@@ -141,13 +142,13 @@ else:
                          "l1_ratio": [0, 0.5, 1]},
                         cv=cv_index.split(df_tune),
                         refit=False,
-                        scoring=my.d_scoring[TARGET_TYPE],
+                        scoring=scoring,
                         return_train_score=True,
                         n_jobs=my.n_jobs)
            .fit(X=X_binned,
                 y=df_tune[target_name]))
     (hms_plot.ValidationPlotter(x_var="alpha", color_var="l1_ratio", show_gen_gap=True)
-     .plot(fit.cv_results_,  metric=metric, file_path=my.plotloc + "2__tune_enet__" + TARGET_TYPE + ".pdf"))
+     .plot(fit.cv_results_, metric=metric, file_path=my.plotloc + "2__tune_enet__" + TARGET_TYPE + ".pdf"))
 
 
 # --- Random Forest ----------------------------------------------------------------------------------------------------
@@ -158,7 +159,7 @@ fit = (GridSearchCV(RandomForestRegressor() if TARGET_TYPE == "REGR" else
                      "min_samples_leaf": [1, 10, 50]},
                     cv=cv_index.split(df_tune),
                     refit=False,
-                    scoring=my.d_scoring[TARGET_TYPE],
+                    scoring=scoring,
                     return_train_score=True,
                     # use_warm_start=["n_estimators"],
                     n_jobs=my.n_jobs)
@@ -166,7 +167,7 @@ fit = (GridSearchCV(RandomForestRegressor() if TARGET_TYPE == "REGR" else
             y=df_tune[target_name]))
 (hms_plot.ValidationPlotter(x_var="n_estimators", color_var="min_samples_leaf",
                             show_gen_gap=True)
- .plot(fit.cv_results_,  metric=metric, file_path=my.plotloc + "2__tune_rforest__" + TARGET_TYPE + ".pdf"))
+ .plot(fit.cv_results_, metric=metric, file_path=my.plotloc + "2__tune_rforest__" + TARGET_TYPE + ".pdf"))
 
 
 # --- XGBoost ----------------------------------------------------------------------------------------------------------
@@ -177,7 +178,7 @@ fit = (my.GridSearchCV_xlgb(xgb.XGBRegressor(verbosity=0) if TARGET_TYPE == "REG
                              "max_depth": [3, 6], "min_child_weight": [5]},                         
                             cv=cv_index.split(df_tune),
                             refit=False,
-                            scoring=my.d_scoring[TARGET_TYPE],  # must be dict here
+                            scoring=scoring,  # must be dict here
                             return_train_score=True,
                             n_jobs=my.n_jobs)
        .fit(X=X_standard,
@@ -185,7 +186,7 @@ fit = (my.GridSearchCV_xlgb(xgb.XGBRegressor(verbosity=0) if TARGET_TYPE == "REG
 print(time.time() - start)
 (hms_plot.ValidationPlotter(x_var="n_estimators", color_var="max_depth", column_var="min_child_weight",
                             show_gen_gap=True)
- .plot(fit.cv_results_,  metric=metric, file_path=my.plotloc + "2__tune_xgb__" + TARGET_TYPE + ".pdf"))
+ .plot(fit.cv_results_, metric=metric, file_path=my.plotloc + "2__tune_xgb__" + TARGET_TYPE + ".pdf"))
 
 
 # --- LightGBM ---------------------------------------------------------------------------------------------------------
@@ -202,7 +203,7 @@ fit = (my.GridSearchCV_xlgb(lgbm.LGBMRegressor() if TARGET_TYPE == "REGR" else
                              "num_leaves": [8, 16, 32], "min_child_samples": [5]},
                             cv=cv_index.split(df_tune),
                             refit=False,
-                            scoring=my.d_scoring[TARGET_TYPE],
+                            scoring=scoring,
                             return_train_score=True,
                             n_jobs=my.n_jobs)
        .fit(X_standard,
@@ -211,7 +212,7 @@ fit = (my.GridSearchCV_xlgb(lgbm.LGBMRegressor() if TARGET_TYPE == "REGR" else
 print(time.time() - start)
 (hms_plot.ValidationPlotter(x_var="n_estimators", color_var="num_leaves", column_var="min_child_samples",
                             show_gen_gap=True)
- .plot(fit.cv_results_,  metric=metric, file_path=my.plotloc + "2__tune_lgbm__" + TARGET_TYPE + ".pdf"))
+ .plot(fit.cv_results_, metric=metric, file_path=my.plotloc + "2__tune_lgbm__" + TARGET_TYPE + ".pdf"))
 
 
 # --- DeepL ---------------------------------------------------------------------------------------------------------
@@ -276,10 +277,10 @@ fit = (GridSearchCV(KerasRegressor(build_fn=keras_model,
                      "epochs": [2, 7, 15]},
                     cv=cv_index.split(df_tune),
                     refit=False,
-                    scoring=my.d_scoring[TARGET_TYPE],
+                    scoring=scoring,
                     return_train_score=True,
                     n_jobs=my.n_jobs)
-       .fit(X_standard.todense() if TARGET_TYPE == "REGR" else X_standard,  # TODO: Why not sparse for REGR???
+       .fit(X_standard.todense() if TARGET_TYPE == "REGR" else X_standard,  # TODO Bugcheck: Why not sparse for REGR???
             y=(pd.get_dummies(df_tune[target_name]) if TARGET_TYPE == "MULTICLASS" else 
                df_tune[target_name])))
 (hms_plot.ValidationPlotter(x_var="epochs", color_var="batch_normalization", column_var="activation", row_var="size",
@@ -304,13 +305,13 @@ cvresults = cross_validate(
                             "l1_ratio": [1]},
                            cv=ShuffleSplit(1, test_size=0.2, random_state=999),  # just 1-fold for tuning
                            refit=metric,
-                           scoring=my.d_scoring[TARGET_TYPE],
+                           scoring=scoring,
                            return_train_score=False,
                            n_jobs=my.n_jobs),
     X=X_binned,
     y=df_tune[target_name],
     cv=cv_5foldsep.split(df_tune, test_fold=(df_tune["fold"] == "test")),  
-    scoring=my.d_scoring[TARGET_TYPE],
+    scoring=scoring,
     return_train_score=False,
     n_jobs=my.n_jobs)
 df_modelcomp_result = df_modelcomp_result.append(pd.DataFrame.from_dict(cvresults).reset_index()
@@ -326,13 +327,13 @@ cvresults = cross_validate(
          "max_depth": [3], "min_child_weight": [5]},
         cv=ShuffleSplit(1, test_size=0.2, random_state=999),  # just 1-fold for tuning
         refit=metric,
-        scoring=my.d_scoring[TARGET_TYPE],
+        scoring=scoring,
         return_train_score=False,
         n_jobs=my.n_jobs),
     X=X_standard,
     y=df_tune[target_name],
     cv=cv_5foldsep.split(df_tune, test_fold=(df_tune["fold"] == "test")),
-    scoring=my.d_scoring[TARGET_TYPE],
+    scoring=scoring,
     return_train_score=False,
     n_jobs=my.n_jobs)
 df_modelcomp_result = df_modelcomp_result.append(pd.DataFrame.from_dict(cvresults).reset_index()
@@ -348,14 +349,14 @@ cvresults = cross_validate(
          "num_leaves": [32], "min_child_weight": [5]},
         cv=ShuffleSplit(1, test_size=0.2, random_state=999),  # just 1-fold for tuning
         refit=metric,
-        scoring=my.d_scoring[TARGET_TYPE],
+        scoring=scoring,
         return_train_score=False,
         n_jobs=my.n_jobs),
     X=X_standard,
     y=df_tune[target_name],
     fit_params=dict(categorical_feature=i_cate_standard),
     cv=cv_5foldsep.split(df_tune, test_fold=(df_tune["fold"] == "test")),
-    scoring=my.d_scoring[TARGET_TYPE],
+    scoring=scoring,
     return_train_score=False,
     n_jobs=my.n_jobs)
 df_modelcomp_result = df_modelcomp_result.append(pd.DataFrame.from_dict(cvresults).reset_index()
@@ -383,14 +384,14 @@ n_train, score_train, score_test, time_train, time_test = learning_curve(
          "max_depth": [3], "min_child_weight": [5]},
         cv=ShuffleSplit(1, test_size=0.2, random_state=999),  # just 1-fold for tuning
         refit=metric,
-        scoring=my.d_scoring[TARGET_TYPE],
+        scoring=scoring,
         return_train_score=False,
         n_jobs=my.n_jobs),
     X=X_standard,
     y=df_tune[target_name],
     train_sizes=np.arange(0.1, 1.1, 0.2),
     cv=cv_5fold.split(df_tune),
-    scoring=my.d_scoring[TARGET_TYPE][metric],
+    scoring=scoring[metric],
     return_times=True,
     n_jobs=my.n_jobs)
 

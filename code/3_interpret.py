@@ -5,6 +5,7 @@
 # --- Packages ------------------------------------------------------------------------------------
 
 # General
+import matplotlib
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt 
@@ -30,14 +31,17 @@ import my_utils as my
 # --- Parameter --------------------------------------------------------------------------
 
 # Main parameter
-TARGET_TYPE = "CLASS"
+TARGET_TYPE = "MULTICLASS"
 target_name = "cnt_" + TARGET_TYPE + "_num"
 metric = "spear" if TARGET_TYPE == "REGR" else "auc"
+scoring = my.d_scoring[TARGET_TYPE]
 id_name = "instant"
 
 # Plot
 plot = True
-#%matplotlib qt / %matplotlib inline  # activate standard/inline window
+%matplotlib
+plt.ioff()
+#%matplotlib {qt} / %matplotlib inline  # activate standard/inline window
 #plt.ioff() / plt.ion()  # stop/start standard window
 #plt.plot(1, 1)
 
@@ -120,13 +124,13 @@ print(pd.DataFrame(yhat_test).describe())
 # Plot performance
 if plot:
     perf_plot = (hms_plot.MultiPerformancePlotter(n_bins=5, w=18, h=12)
-                 .plot(y=df_test[target_name], y_hat=yhat_test,
+                 .plot(y=df_test[target_name if TARGET_TYPE != "MULTICLASS" else "cnt_MULTICLASS_num"], y_hat=yhat_test,
                        file_path=my.plotloc + "3__performance__" + TARGET_TYPE + ".pdf"))
 
 # Check performance for crossvalidated fits
 d_cv = cross_validate(model, df_traintest[features], df_traintest[target_name],
                       cv=cv_5foldsep.split(df_traintest, test_fold=(df_traintest["fold"] == "test")),  # special 5fold
-                      scoring=my.d_scoring[TARGET_TYPE],
+                      scoring=scoring,
                       return_estimator=True,
                       n_jobs=my.n_jobs)
 print(d_cv["test_" + metric], " \n", np.mean(d_cv["test_" + metric]), np.std(d_cv["test_" + metric]))
@@ -136,7 +140,7 @@ print(d_cv["test_" + metric], " \n", np.mean(d_cv["test_" + metric]), np.std(d_c
 
 # Variable importance (on train data!)
 df_varimp_train = my.variable_importance(model, df_train[features], df_train[target_name], features,
-                                         scoring=my.d_scoring[TARGET_TYPE][metric],
+                                         scoring=scoring[metric],
                                          random_state=42, n_jobs=my.n_jobs)
 # Scikit's VI: permuatation_importance("same parameter but remove features argument and add n_repeats=1")
 
@@ -160,7 +164,8 @@ else:
     print(my.spear(df_test[target_name].values, yhat_top))
 if plot:
     perf_plot_top = (hms_plot.MultiPerformancePlotter(n_bins=5, w=18, h=12)
-                     .plot(y=df_test[target_name], y_hat=yhat_top,
+                     .plot(y=df_test[target_name if TARGET_TYPE != "MULTICLASS" else "cnt_MULTICLASS_num"],
+                           y_hat=yhat_top, 
                            file_path=my.plotloc + "3__performance_top__" + TARGET_TYPE + ".pdf"))
 
 
@@ -209,7 +214,7 @@ xgb.plot_importance(model[1].estimator if type(model[1]) == my.ScalingEstimator 
 
 # Importance (on test data!)
 df_varimp_test = my.variable_importance(model, df_test[features], df_test[target_name], features,
-                                        scoring=my.d_scoring[TARGET_TYPE][metric],
+                                        scoring=scoring[metric],
                                         random_state=42, n_jobs=my.n_jobs)
 features_top_test = df_varimp_test.loc[df_varimp_test["importance_cum"] < 95, "feature"].values
 
@@ -226,7 +231,7 @@ for i, (i_train, i_test) in enumerate(cv_5foldsep.split(df_traintest, test_fold=
     df_tmp = df_traintest.iloc[i_train, :]
     df_varimp_test_cv = df_varimp_test_cv.append(
         my.variable_importance(d_cv["estimator"][i], df_tmp[features], df_tmp[target_name], features_top_test,
-                               scoring=my.d_scoring[TARGET_TYPE][metric],
+                               scoring=scoring[metric],
                                random_state=42, n_jobs=my.n_jobs).assign(run=i))
 df_varimp_test_se = (df_varimp_test_cv.groupby("feature")["score_diff", "importance"].agg("sem")
                      .pipe(lambda x: x.set_axis([col + "_se" for col in x.columns], axis=1, inplace=False))
@@ -353,10 +358,11 @@ i_random = df_test.sample(n=n_select).index.values
 i_explain = np.concatenate([i_worst, i_best, i_random])
 df_explain = df_test.iloc[i_explain, :].reset_index(drop=True)
 y_explain = df_explain[target_name]
-if TARGET_TYPE != "REGR":
-    yhat_explain = yhat_test[i_explain, np.argmax(yhat_test, axis=1)]
-else:
-    yhat_explain = yhat_test[i_explain]
+#if TARGET_TYPE != "REGR":
+#    yhat_explain = yhat_test[i_explain, np.argmax(yhat_test, axis=1)[i_explain]]
+#else:
+#    yhat_explain = yhat_test[i_explain]
+yhat_explain = yhat_test[i_explain]
 
 # Get shap
 explainer = shap.TreeExplainer(model[1].estimator if type(model[1]) == my.ScalingEstimator else model[1])
@@ -427,4 +433,3 @@ if plot:
 # TODO
 
 plt.close("all")
-

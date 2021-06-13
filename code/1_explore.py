@@ -30,7 +30,7 @@ import my_utils as my
 plot = True
 %matplotlib
 #%matplotlib qt / %matplotlib inline  # activate standard/inline window
-plt.ioff() #/ plt.ion()  # stop/start standard window
+plt.ioff()  # / plt.ion()  # stop/start standard window
 #plt.plot(1, 1)
 
 # Specific parameters 
@@ -131,9 +131,9 @@ df[nume].describe()
 
 
 # --- Create nominal variables for all numeric variables (for linear models)  -----------------------------------------
-df[nume + "_BINNED"] = df[nume].swifter.apply(lambda x: (pd.qcut(x, 5)))
-df[nume + "_BINNED"] = df[nume + "_BINNED"].apply(lambda x: (("q" + x.cat.codes.astype("str") + " " + x.astype("str"))
-                                                             .replace("nan", np.nan)))
+
+df[nume + "_BINNED"] = (df[nume].swifter.apply(lambda x: (pd.qcut(x, 5)))
+                        .apply(lambda x: (("q" + x.cat.codes.astype("str") + " " + x.astype("str")))))
 
 # Convert missings to own level ("(Missing)")
 df[nume + "_BINNED"] = df[nume + "_BINNED"].fillna("(Missing)")
@@ -161,7 +161,7 @@ for TARGET_TYPE in TARGET_TYPES:
                                                                      show_regplot=True)
                             .plot(features=df[nume],
                                   target=df["cnt_" + TARGET_TYPE],
-                                  file_path=my.plotloc + "1__distr_nume__" + TARGET_TYPE + ".pdf"))
+                                  file_path=my.plotloc + "1__distr_nume_orig__" + TARGET_TYPE + ".pdf"))
     print(time.time() - start)
     
 # Winsorize (hint: plot again before deciding for log-trafo)
@@ -194,7 +194,7 @@ for TARGET_TYPE in TARGET_TYPES:
                             .plot(features=df[np.column_stack((nume, nume + "_BINNED")).ravel()],
                                   target=df["cnt_" + TARGET_TYPE],
                                   varimps=varperf_nume.round(2),
-                                  file_path=my.plotloc + "1__distr_nume_final__" + TARGET_TYPE + ".pdf"))
+                                  file_path=my.plotloc + "1__distr_nume__" + TARGET_TYPE + ".pdf"))
 
 
 # --- Removing variables -----------------------------------------------------------------------------------------------

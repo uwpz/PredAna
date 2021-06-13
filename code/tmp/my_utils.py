@@ -145,7 +145,7 @@ d_scoring = {"REGR": {"spear": make_scorer(spear, greater_is_better=True),
 
 ########################################################################################################################
 # Explore
-#######################################################################################################################
+########################################################################################################################
 
 # Overview of values
 def value_counts(df, topn=5, dtypes=["object"]):
@@ -234,7 +234,7 @@ class ImputeMode(BaseEstimator, TransformerMixin):
 
 ########################################################################################################################
 # Model Comparison
-#######################################################################################################################
+########################################################################################################################
 
 # Undersample
 def undersample(df, target, n_max_per_level, random_state=42):
@@ -423,7 +423,7 @@ def plot_modelcomp(df_modelcomp_result, modelvar="model", runvar="run", scorevar
 
 ########################################################################################################################
 # Interpret
-#######################################################################################################################
+########################################################################################################################
 
 # Rescale predictions (e.g. to rewind undersampling)
 def scale_predictions(yhat, b_sample=None, b_all=None):
@@ -665,7 +665,6 @@ def plot_func(l_calls, n_row=2, n_col=3, figsize=(18, 12), pdf_path=None):
 # Plot partial dependence
 def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, refline=None, ylim=None,
             color="red", min_width=0.2):
-
     ax_act = ax
     numeric_feature = pd.api.types.is_numeric_dtype(feature)
 
@@ -680,6 +679,7 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
             sns.distplot(feature_ref, color="grey", hist=False,
                          kde=True, kde_kws={'shade': True, 'linewidth': 0},
                          ax=ax2)
+
         # Rugs
         sns.rugplot(feature, color="grey", ax=ax_act)
 
