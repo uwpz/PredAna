@@ -6,3 +6,4 @@ code/__pycache__
 .ipynb_checkpoints/
 output
 venv
+*.gz
