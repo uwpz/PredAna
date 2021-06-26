@@ -35,7 +35,7 @@ import my_utils as my
 # --- Parameter --------------------------------------------------------------------------
 
 # Main parameter
-TARGET_TYPE = "CLASS"
+TARGET_TYPE = "REGR"
 target_name = "cnt_" + TARGET_TYPE + "_num"
 metric = "spear" if TARGET_TYPE == "REGR" else "auc"
 scoring = my.d_scoring[TARGET_TYPE]
@@ -213,6 +213,7 @@ print(time.time() - start)
 (hms_plot.ValidationPlotter(x_var="n_estimators", color_var="num_leaves", column_var="min_child_samples",
                             show_gen_gap=True)
  .plot(fit.cv_results_, metric=metric, file_path=my.plotloc + "2__tune_lgbm__" + TARGET_TYPE + ".pdf"))
+
 
 
 # --- DeepL ---------------------------------------------------------------------------------------------------------

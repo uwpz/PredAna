@@ -405,8 +405,9 @@ class GridSearchCV_xlgb(GridSearchCV):
             self.multimetric_ = True
             self.best_index_ = df_cv_results["mean_test_" + self.refit].idxmax()
             self.best_score_ = df_cv_results["mean_test_" + self.refit].loc[self.best_index_]
-            self.best_params_ = (df_cv_results[param_names].loc[[self.best_index_]]
-                                 .to_dict(orient="records")[0])
+            tmp = (df_cv_results[["param_" + name for name in param_names]].loc[[self.best_index_]]
+                   .to_dict(orient="records")[0])
+            self.best_params_ = {key.replace("param_", ""): value for key, value in tmp.items()}
             self.best_estimator_ = (clone(self.estimator).set_params(**self.best_params_).fit(X, y, **fit_params))
 
         return self

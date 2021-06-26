@@ -31,7 +31,7 @@ import my_utils as my
 # --- Parameter --------------------------------------------------------------------------
 
 # Main parameter
-TARGET_TYPE = "MULTICLASS"
+TARGET_TYPE = "CLASS"
 target_name = "cnt_" + TARGET_TYPE + "_num"
 metric = "spear" if TARGET_TYPE == "REGR" else "auc"
 scoring = my.d_scoring[TARGET_TYPE]
@@ -265,12 +265,13 @@ from sklearn.inspection import permutation_importance, partial_dependence
 
 # cate
 cate_top_test = my.diff(features_top_test, nume)
-partial_dependence(model, df_test[features],
+tmp = partial_dependence(model, df_test[features],
                    features=cate_top_test[0],  # just one feature per call is possible!
                    grid_resolution=np.inf,  # workaround to take all members
-                   kind="average")
+                   kind="individual")
 # nume
 nume_top_test = my.diff(features_top_test, cate)
+from joblib import Parallel, delayed
 Parallel(n_jobs=my.n_jobs, max_nbytes='100M')(
     delayed(partial_dependence)(model, df_test[features], feature,
                                 grid_resolution=5,  # 5 quantiles
