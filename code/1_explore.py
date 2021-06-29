@@ -165,7 +165,7 @@ for TARGET_TYPE in TARGET_TYPES:
     print(time.time() - start)
     
 # Winsorize (hint: plot again before deciding for log-trafo)
-df[nume] = my.Winsorize(lower_quantile=0.01, upper_quantile=0.99).fit_transform(df[nume])
+df[nume] = my.Winsorize(lower_quantile=None, upper_quantile=0.99).fit_transform(df[nume])
 
 # Log-Transform
 tolog = np.array([], dtype="object")
@@ -254,17 +254,17 @@ df[miss].isnull().sum()
 
 # Categorical variables
 cate = df_meta_sub.loc[df_meta_sub.type.isin(["cate"]), "variable"].values
-df[cate] = df[cate].astype("object")
+df[cate] = df[cate].astype("str")
 df[cate].describe()
 
 
 # --- Handling factor values -------------------------------------------------------------------------------------------
 
 # Convert "standard" features: map missings to own level
-df[cate] = df[cate].fillna("(Missing)")
+df[cate] = df[cate].fillna("(Missing)").replace("nan", "(Missing)")
 df[cate].describe()
 
-# Create ordinal/binary-encoded features
+# Create ordinal and binary-encoded features
 ordi = np.array(["hr", "mnth", "yr"], dtype="object")
 df[ordi + "_ENCODED"] = df[ordi].apply(lambda x: pd.to_numeric(x))  # ordinal
 yesno = np.concatenate([np.array(["holiday", "workingday"], dtype="object"), "MISS_" + miss])
@@ -284,7 +284,7 @@ toomany = levinfo[levinfo > topn_toomany].index.values
 print(toomany)
 toomany = my.diff(toomany, ["hr", "mnth", "weekday"])  # set exception for important variables
 if len(toomany):
-    df[toomany] = my.Collapse(n_top=5).fit_transform(df[toomany])
+    df[toomany] = my.Collapse(n_top=topn_toomany).fit_transform(df[toomany])
 
 
 # --- Final variable information ---------------------------------------------------------------------------------------

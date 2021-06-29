@@ -58,6 +58,14 @@ a = df[nume].apply(lambda x:plt.plot(x)).iloc[0,:].values
 a.iloc[0,1]
 plt.plot(1)
 
+# fill missing
+df = pd.DataFrame({"a": range(1,5), "b": [1, 2, 3, np.nan]})
+df.dtypes
+df = df.astype("object")
+df = df.astype("str").replace("nan", None)
+df = df.fillna("missing")
+df
+df.replace("nan", "Missing")
 
 # Exchange axes
 %matplotlib inline

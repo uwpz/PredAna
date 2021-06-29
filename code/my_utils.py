@@ -163,15 +163,16 @@ def value_counts(df, topn=5, dtypes=["object"]):
 # Univariate model performance
 def variable_performance(feature, target, scorer, splitter=KFold(5), groups=None):
 
-    # Detect types
-    target_type = dict(continuous="REGR", binary="CLASS", multiclass="MULTICLASS")[type_of_target(target)]
-    numeric_feature = pd.api.types.is_numeric_dtype(feature)
-
     # Drop all missings
     df_hlp = pd.DataFrame().assign(feature=feature, target=target)
     if groups is not None:
         df_hlp["groups_for_split"] = groups
     df_hlp = df_hlp.dropna().reset_index(drop=True)
+    
+    # Detect types
+    target_type = dict(continuous="REGR", binary="CLASS", 
+                       multiclass="MULTICLASS")[type_of_target(df_hlp["target"])]
+    numeric_feature = pd.api.types.is_numeric_dtype(df_hlp["feature"])
     
     # Calc performance
     perf = np.mean(cross_val_score(
@@ -183,7 +184,7 @@ def variable_performance(feature, target, scorer, splitter=KFold(5), groups=None
         scoring=scorer))
     
     return perf
-
+    
 
 # Winsorize
 class Winsorize(BaseEstimator, TransformerMixin):
@@ -196,8 +197,12 @@ class Winsorize(BaseEstimator, TransformerMixin):
         X = pd.DataFrame(X)
         if self.lower_quantile is not None:
             self.a_lower_ = np.nanquantile(X, q=self.lower_quantile, axis=0)
+        else:
+            self.a_lower_ = None
         if self.upper_quantile is not None:
             self.a_upper_ = np.nanquantile(X, q=self.upper_quantile, axis=0)
+        else:
+            self.a_uppe_ = None
         return self
 
     def transform(self, X, *_):
