@@ -21,7 +21,16 @@ import time
 import hmsPM.plotting as hms_plot
 
 # Custom functions and classes
-import my_tools as my
+import my_utils as my
+
+a = pd.Series(np.array(['a', 'b']))
+b = pd.Series(np.array(['a', 1]))
+pd.api.types.is_object_dtype(a)
+pd.api.types.is_string_dtype(a)
+pd.api.types.is_object_dtype(b)
+pd.api.types.is_string_dtype(b)
+
+
 
 
 # --- Parameter --------------------------------------------------------------------------
