@@ -26,6 +26,7 @@ import shap
 # Custom functions and classes
 #from . import blub as bl
 import my_utils as my
+import my_plots as myplt
 
 
 # --- Parameter --------------------------------------------------------------------------
@@ -120,6 +121,17 @@ else:
     yhat_test = model.predict(df_test[features])
     print(my.spear(df_test[target_name].values, yhat_test))
 print(pd.DataFrame(yhat_test).describe())
+
+#%%
+fig, ax = plt.subplots(1, 1)
+#myplt.plot_roc(ax, y=df_test[target_name], yhat=yhat_test)
+#myplt.plot_calibration(ax, y=df_test[target_name], yhat=yhat_test)
+#myplt.plot_confusion(ax, y=df_test[target_name], yhat=yhat_test, threshold=0.5)
+#myplt.plot_precision_recall(ax, y=df_test[target_name], yhat=yhat_test)
+myplt.plot_precision(ax, y=df_test[target_name], yhat=yhat_test)
+#%%
+
+
 
 # Plot performance
 if plot:

@@ -15,7 +15,7 @@ import warnings
 import time
 
 # Scikit
-from sklearn.metrics import make_scorer, roc_auc_score, accuracy_score
+from sklearn.metrics import make_scorer, roc_auc_score, accuracy_score, roc_curve
 from sklearn.model_selection import cross_val_score, GridSearchCV, check_cv, KFold
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.preprocessing import OneHotEncoder, KBinsDiscretizer
