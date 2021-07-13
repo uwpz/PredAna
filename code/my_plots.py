@@ -31,9 +31,12 @@ import lightgbm as lgbm
 from itertools import product  # for GridSearchCV_xlgb
 from sklearn.metrics import make_scorer, roc_auc_score, accuracy_score, roc_curve
 
+# Custom functions and classes
+import my_utils as my
+
 
 ########################################################################################################################
-# Functions
+# CLASS plots
 ########################################################################################################################
 
 # Plot ROC curve
@@ -42,10 +45,6 @@ def plot_roc(ax, y, yhat):
     #yhat = yhat_test
 
     ax_act = ax
-
-    # yhat to 1-dim
-    if ((yhat.ndim == 2) and (yhat.shape[1] == 2)):
-        yhat = yhat[:, 1]
 
     # also for regression
     if np.max(y) > 1:
@@ -71,10 +70,6 @@ def plot_calibration(ax, y, yhat, n_bins=5):
 
     ax_act = ax
 
-    # yhat to 1-dim
-    if ((yhat.ndim == 2) and (yhat.shape[1] == 2)):
-        yhat = yhat[:, 1]
-
     # Calibration curve
     true, predicted = calibration_curve(y, yhat, n_bins=n_bins)
     # sns.lineplot(predicted, true, ax=ax_act, marker="o")
@@ -95,10 +90,6 @@ def plot_confusion(ax, y, yhat, threshold=0.5, cmap="Blues"):
 
     ax_act = ax
     
-    # yhat to 1-dim
-    if ((yhat.ndim == 2) and (yhat.shape[1] == 2)):
-        yhat = yhat[:, 1]
-    
     # binary label
     yhat_bin = np.where(yhat > threshold, 1, 0)
     
@@ -118,10 +109,6 @@ def plot_confusion(ax, y, yhat, threshold=0.5, cmap="Blues"):
 def plot_pred_distribution(ax, y, yhat):
 
     ax_act = ax
-
-    # yhat to 1-dim
-    if ((yhat.ndim == 2) and (yhat.shape[1] == 2)):
-        yhat = yhat[:, 1]
         
     # plot distribution
     sns.histplot(x=yhat, hue=y, stat="density", common_norm=False, kde=True, bins=20, ax=ax_act)
@@ -137,13 +124,10 @@ def plot_pred_distribution(ax, y, yhat):
 def plot_precision_recall(ax, y, yhat, annotate=True, fontsize=10):
 
     ax_act = ax
-    
-    # yhat to 1-dim
-    if ((yhat.ndim == 2) and (yhat.shape[1] == 2)):
-        yhat = yhat[:, 1]
         
     # precision recall calculation
     prec, rec, cutoff = precision_recall_curve(y, yhat)
+    cutoff = np.append(cutoff, 1)
     prec_rec_auc = average_precision_score(y, yhat)
     
     # plot
@@ -165,14 +149,10 @@ def plot_precision(ax, y, yhat, annotate=True, fontsize=10):
 
     ax_act = ax
 
-    # yhat to 1-dim
-    if ((yhat.ndim == 2) and (yhat.shape[1] == 2)):
-        yhat = yhat[:, 1]
-
     # precision calculation
     pct_tested = np.array([])
     prec, _, cutoff = precision_recall_curve(y, yhat)
-    prec = prec[:-1]
+    cutoff = np.append(cutoff, 1)
     for thres in cutoff:
         pct_tested = np.append(pct_tested, [np.sum(yhat >= thres) / len(yhat)])
     
@@ -193,3 +173,55 @@ def plot_precision(ax, y, yhat, annotate=True, fontsize=10):
                                 fontsize=fontsize)
 
 
+# Plot model performance for CLASS target
+def plot_model_performance_CLASS(y, yhat,
+                                 n_bins=5, threshold=0.5, cmap="Blues", annotate=True, fontsize=10,
+                                 l_plots=None,
+                                 n_rows=2, n_cols=3, w=18, h=12, pdf_path=None):
+
+    # yhat to 1-dim
+    if ((yhat.ndim == 2) and (yhat.shape[1] == 2)):
+        yhat = yhat[:, 1]
+        
+    # Define plot dict
+    d_calls = dict()
+    d_calls["roc"] = (plot_roc, dict(y=y, yhat=yhat))
+    d_calls["confusion"] = (plot_confusion, dict(y=y, yhat=yhat, threshold=threshold, cmap=cmap))
+    d_calls["distribution"] = (plot_pred_distribution, dict(y=y, yhat=yhat))
+    d_calls["calibration"] = (plot_calibration, dict(y=y, yhat=yhat, n_bins=n_bins))
+    d_calls["precision_recall"] = (plot_precision_recall, dict(y=y, yhat=yhat, annotate=annotate, fontsize=fontsize))
+    d_calls["precision"] = (plot_precision, dict(y=y, yhat=yhat, annotate=annotate, fontsize=fontsize))
+
+    # Filter plot dict
+    if l_plots is not None:
+        l_calls = [d_calls[x] for x in l_plots]
+    else:
+        l_calls = list(d_calls.values())
+    
+    # plot
+    my.plot_function_calls(l_calls, n_rows=n_rows, n_cols=n_cols, figsize=(w, h), pdf_path=pdf_path)
+
+
+# Wrapper for plot_model_performance_<target_type>
+def plot_model_performance(y, yhat,
+                           n_bins=5, threshold=0.5, cmap="Blues", annotate=True, fontsize=10,
+                           l_plots=None,
+                           n_rows=2, n_cols=3, w=18, h=12, pdf_path=None):
+    # Derive target type
+    target_type = dict(continuous="REGR", binary="CLASS",
+                       multiclass="MULTICLASS")[type_of_target(y)]
+    
+    # Plot
+    if target_type == "CLASS":
+        plot_model_performance_CLASS(y, yhat, 
+                                     n_bins, threshold, cmap, annotate, fontsize, 
+                                     l_plots, n_rows, n_cols, w, h, pdf_path)
+    elif target_type == "REGR":
+        pass
+        #plot_model_performance_REGR(y, yhat, n_bins, n_rows, n_cols, pdf_path)
+    elif target_type == "MULTICLASS":
+        pass
+        #plot_model_performance_MULTICLASS(y, yhat, n_bins, n_rows, n_cols, pdf_path)
+    else:
+        warnings.warn("Target type cannot be determined")
+    return

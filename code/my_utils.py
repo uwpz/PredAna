@@ -90,6 +90,42 @@ def show_figure(fig):
     new_manager = dummy.canvas.manager
     new_manager.canvas.figure = fig
     fig.set_canvas(new_manager.canvas)
+    
+
+# Plot list of tuples (plot_call, kwargs)
+def plot_function_calls(l_calls, n_rows=2, n_cols=3, figsize=(18, 12), pdf_path=None):
+
+    # Open pdf
+    if pdf_path is not None:
+        pdf_pages = PdfPages(pdf_path)
+    else:
+        pdf_pages = None
+
+    for i, (plot_func, kwargs) in enumerate(l_calls):
+        # Init new page
+        if i % (n_rows * n_cols) == 0:
+            fig, ax = plt.subplots(n_rows, n_cols, figsize=figsize)
+            i_ax = 0
+
+        # Plot call
+        plot_func(ax=ax.flat[i_ax] if (n_rows * n_cols > 1) else ax, **kwargs)
+        fig.tight_layout()
+        i_ax += 1
+
+        # "Close" page
+        if (i_ax == n_rows * n_cols) or (i == len(l_calls) - 1):
+            # Remove unused axes
+            if (i == len(l_calls) - 1):
+                for k in range(i_ax, n_rows * n_cols):
+                    ax.flat[k].axis("off")
+
+            # Write pdf
+            if pdf_path is not None:
+                pdf_pages.savefig(fig)
+
+    # Close pdf
+    if pdf_path is not None:
+        pdf_pages.close()
 
 
 # --- Metrics ----------------------------------------------------------------------------------------
@@ -668,42 +704,6 @@ def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
     # Return
     return shap_values_agg
    
-
-# Plot list of tuples (plot_call, kwargs)
-def plot_func(l_calls, n_row=2, n_col=3, figsize=(18, 12), pdf_path=None):
-
-    # Open pdf
-    if pdf_path is not None:
-        pdf_pages = PdfPages(pdf_path)
-    else:
-        pdf_pages = None
-
-    for i, (plot_func, kwargs) in enumerate(l_calls):
-        # Init new page
-        if i % (n_row * n_col) == 0:
-            fig, ax = plt.subplots(n_row, n_col, figsize=figsize)
-            i_ax = 0
-
-        # Plot call
-        plot_func(ax=ax.flat[i_ax] if n_row*n_col>1 else ax, **kwargs)
-        fig.tight_layout()
-        i_ax += 1
-
-        # "Close" page
-        if (i_ax == n_row * n_col) or (i == len(l_calls) - 1):
-            # Remove unused axes
-            if (i == len(l_calls) - 1):
-                for k in range(i_ax, n_row * n_col):
-                    ax.flat[k].axis("off")
-
-            # Write pdf
-            if pdf_path is not None:
-                pdf_pages.savefig(fig)
-
-    # Close pdf
-    if pdf_path is not None:
-        pdf_pages.close()
-
 
 # Plot partial dependence
 def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, refline=None, ylim=None,

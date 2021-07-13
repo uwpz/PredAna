@@ -122,13 +122,17 @@ else:
     print(my.spear(df_test[target_name].values, yhat_test))
 print(pd.DataFrame(yhat_test).describe())
 
-#%%
+
 fig, ax = plt.subplots(1, 1)
-#myplt.plot_roc(ax, y=df_test[target_name], yhat=yhat_test)
+myplt.plot_roc(ax, y=df_test[target_name], yhat=yhat_test)
 #myplt.plot_calibration(ax, y=df_test[target_name], yhat=yhat_test)
 #myplt.plot_confusion(ax, y=df_test[target_name], yhat=yhat_test, threshold=0.5)
 #myplt.plot_precision_recall(ax, y=df_test[target_name], yhat=yhat_test)
 myplt.plot_precision(ax, y=df_test[target_name], yhat=yhat_test)
+#myplt.plot_pred_distribution(ax, y=df_test[target_name], yhat=yhat_test)
+
+#%%
+myplt.plot_model_performance(y=df_test[target_name], yhat=yhat_test)
 #%%
 
 
@@ -264,7 +268,8 @@ l_calls = [(my.plot_variable_importance,
                  max_score_diff=df_varimp_plot["score_diff"][0].round(2),
                  category=df_varimp_plot["category"]))]
 if plot:
-    my.plot_func(l_calls, n_row=1, n_col=1, figsize=(8, 4), pdf_path=my.plotloc + "3__vi__" + TARGET_TYPE + ".pdf")
+    my.plot_function_calls(l_calls, n_row=1, n_col=1, figsize=(8, 4), 
+                           pdf_path=my.plotloc + "3__vi__" + TARGET_TYPE + ".pdf")
 
 
 ########################################################################################################################
@@ -319,7 +324,7 @@ for i, feature in enumerate(list(d_pd.keys())):
                          refline=yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR" else yhat_test.mean(),
                          ylim=None, color=my.colorblind[i_col[TARGET_TYPE]])))
 if plot:
-    my.plot_func(l_calls, pdf_path=my.plotloc + "3__pd__" + TARGET_TYPE + ".pdf")
+    my.plot_function_calls(l_calls, pdf_path=my.plotloc + "3__pd__" + TARGET_TYPE + ".pdf")
     
 
 '''
@@ -354,7 +359,7 @@ for i, feature in enumerate(list(d_pd_shap.keys())):
                          #refline=yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR" else yhat_test.mean(),
                          ylim=None, color=my.colorblind[i_col[TARGET_TYPE]])))
 if plot:
-    my.plot_func(l_calls, pdf_path=my.plotloc + "3__pd_shap__" + TARGET_TYPE + ".pdf")
+    my.plot_function_calls(l_calls, pdf_path=my.plotloc + "3__pd_shap__" + TARGET_TYPE + ".pdf")
 '''
 
 ########################################################################################################################
@@ -435,7 +440,7 @@ for i in range(len(df_explain)):
                          yhat_str=yhat_str,
                          multiclass_index=None if TARGET_TYPE != "MULTICLASS" else i_col[TARGET_TYPE])))
 if plot:
-    my.plot_func(l_calls, pdf_path=my.plotloc + "3__shap__" + TARGET_TYPE + ".pdf")
+    my.plot_function_calls(l_calls, pdf_path=my.plotloc + "3__shap__" + TARGET_TYPE + ".pdf")
 
 
 
