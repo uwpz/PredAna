@@ -35,8 +35,7 @@ from sklearn.metrics import make_scorer, roc_auc_score, accuracy_score, roc_curv
 from scipy.interpolate import splev, splrep
 
 # Custom functions and classes
-import my_utils as my
-import my_plots as myplt
+import up_utils as up
 
 
 ########################################################################################################################
@@ -205,7 +204,7 @@ def get_plot_model_performance_CLASS(y, yhat,
 
 # Plot model performance for CLASS target
 def get_plot_model_performance_REGR(y, yhat,
-                                ylim, regplot, n_bins):
+                                    ylim, regplot, n_bins):
 
     # yhat to 1-dim
     if ((yhat.ndim == 2) and (yhat.shape[1] == 2)):
@@ -442,3 +441,86 @@ def plot_scatter(ax, x, y, xlabel=None, ylabel=None,
         inset_ax_over.set_facecolor("white")
         inset_ax_over.get_xaxis().set_visible(False)
         inset_ax_over.get_yaxis().set_visible(False)
+
+
+def plot_bibar(ax, x, y, xlabel=None, ylabel=None, label_yes=None,
+               min_width=0.2, inset_size=0.2, ylim=None,
+               refline=True, title=None,
+               color=up.colorblind[1]):
+
+    ax_act = ax
+
+    # Adapt labels
+    if (xlabel is None) and isinstance(x, pd.Series):
+        xlabel = x.name
+    if (ylabel is None) and isinstance(y, pd.Series):
+        ylabel = y.name
+
+    # Convert to series
+    x = pd.Series(x).rename("x")
+    y = pd.Series(y).rename("y")
+
+    # Get "yes" class
+    if label_yes is None:
+        label_yes = y.value_counts().sort_values().index.values[0]
+
+    # Define title
+    if title is None:
+        title = xlabel
+
+    # Prepare data
+    df_hlp = pd.crosstab(x, y)
+    df_plot = (df_hlp.div(df_hlp.sum(axis=1), axis=0)
+               .assign(w=df_hlp.sum(axis=1))
+               .reset_index()
+               .assign(pct=lambda x: 100 * x["w"] / df_hlp.values.sum())
+               .assign(w=lambda x: 0.9 * x["w"] / x["w"].max())
+               .assign(x_fmt=lambda x: x["x"] + x["pct"].map("( {:,.1f} %)".format))
+               .assign(w=lambda x: np.where(x["w"] < min_width, min_width, x["w"])))
+
+    # Barplot
+    ax_act.barh(df_plot["x_fmt"], df_plot[label_yes], height=df_plot["w"],
+                color=color, edgecolor="black", alpha=0.5, linewidth=1)
+    ax_act.set_xlabel("avg(" + ylabel + ")")
+    ax_act.set_title(title)
+    if ylim is not None:
+        ax_act.set_xlim(ylim)
+
+    # Refline
+    if refline:
+        ax_act.axvline((y == label_yes).sum() / len(y), ls="dotted", color="black")
+
+    # Inner barplot
+    xlim = ax_act.get_xlim()
+    ax_act.set_xlim(xlim[0] - 1.5 * inset_size * (xlim[1] - xlim[0]))
+    inset_ax = ax_act.inset_axes([0, 0, inset_size, 1], zorder=10)
+    inset_ax.set_axis_off()
+    ax_act.axvline(xlim[0], color="black")  # separation line
+    ax_act.get_shared_y_axes().join(ax_act, inset_ax)
+    inset_ax.barh(df_plot["x_fmt"], df_plot.w,
+                  color="lightgrey", edgecolor="black", linewidth=1)
+
+
+def plot_CLASS_cate(ax, target, feature, target_label=None, feature_label=None,
+                        min_width=0.2, inset_size=0.2, ylim=None,
+                        refline=True, varimp=None, varimp_fmt="0.2f",
+                        color=up.colorblind[1]):
+    
+    # Adapt labels
+    if not isinstance(target, pd.Series):
+        target = pd.Series(target)
+        target.name = target_label
+    if not isinstance(feature, pd.Series):
+        feature = pd.Series(feature)
+        feature.name = feature_label      
+        
+    # Add title
+    title = feature.name
+    if varimp is not None:
+        title = title + " (VI: " + format(varimp, varimp_fmt) + ")"
+        
+    plot_bibar(ax, x=feature, y=target, title=title,
+                     min_width=min_width, inset_size=inset_size, ylim=ylim,
+                     refline=refline,
+                     color=color)
+
