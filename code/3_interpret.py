@@ -11,6 +11,7 @@ import pandas as pd
 import matplotlib.pyplot as plt 
 import seaborn as sns
 import pickle
+import time
 from importlib import reload 
 import hmsPM.plotting as hms_plot
 
@@ -32,7 +33,7 @@ import my_plots as myplt
 # --- Parameter --------------------------------------------------------------------------
 
 # Main parameter
-TARGET_TYPE = "CLASS"
+TARGET_TYPE = "REGR"
 target_name = "cnt_" + TARGET_TYPE + "_num"
 metric = "spear" if TARGET_TYPE == "REGR" else "auc"
 scoring = my.d_scoring[TARGET_TYPE]
@@ -123,17 +124,14 @@ else:
 print(pd.DataFrame(yhat_test).describe())
 
 
-fig, ax = plt.subplots(1, 1)
-myplt.plot_roc(ax, y=df_test[target_name], yhat=yhat_test)
-#myplt.plot_calibration(ax, y=df_test[target_name], yhat=yhat_test)
-#myplt.plot_confusion(ax, y=df_test[target_name], yhat=yhat_test, threshold=0.5)
-#myplt.plot_precision_recall(ax, y=df_test[target_name], yhat=yhat_test)
-myplt.plot_precision(ax, y=df_test[target_name], yhat=yhat_test)
-#myplt.plot_pred_distribution(ax, y=df_test[target_name], yhat=yhat_test)
+#%%
+start = time.time()
+myplt.plot_model_performance(y=df_test[target_name], yhat=yhat_test,
+                             n_bins=10, regplot=True)
+print(time.time()-start)
+#%%
 
-#%%
-myplt.plot_model_performance(y=df_test[target_name], yhat=yhat_test)
-#%%
+
 
 
 

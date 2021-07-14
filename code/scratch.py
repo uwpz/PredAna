@@ -6,7 +6,6 @@
 
 # General
 from scipy.interpolate import splev, splrep, make_interp_spline
-from scipy.interpolate import splev, splrep
 import seaborn as sns
 import matplotlib.colors as mcolors
 import os  # sys.path.append(os.getcwd())
