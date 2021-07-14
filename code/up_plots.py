@@ -36,6 +36,7 @@ from scipy.interpolate import splev, splrep
 
 # Custom functions and classes
 import my_utils as my
+import my_plots as myplt
 
 
 ########################################################################################################################
