@@ -39,9 +39,280 @@ import up_utils as up
 
 
 ########################################################################################################################
-# CLASS plots
+# General bivariate plots
 ########################################################################################################################
 
+def plot_bidistribution(ax, x, group, n_bins=20, xlim=None, xlabel=None, title=None, legend_title=None, inset_size=0.2):
+
+    ax_act = ax
+
+    # Distribution
+    '''
+    members = np.sort(df[target].unique())
+    for m, member in enumerate(members):
+        sns.distplot(df.loc[df[target] == member, feature_act].dropna(),
+                        color=color[m],
+                        bins=20,
+                        label=member,
+                        ax=ax_act)
+    if varimp is not None:
+        ax_act.set_title(feature_act + " (VI: " + str(varimp[feature_act]) + ")")
+    else:
+        ax_act.set_title(feature_act)
+    '''
+    sns.histplot(ax=ax_act, x=x, hue=group, stat="density", common_norm=False, kde=True, bins=n_bins)
+    ax_act.set_ylabel("Density")
+    if xlabel is not None:
+        ax_act.set_xlabel(xlabel)
+    #ax_act.legend(title=legend_title, loc = "best")
+    if title is not None:
+        ax_act.set_title(title)
+
+    # Inner Boxplot
+    ylim = ax_act.get_ylim()
+    ax_act.set_ylim(ylim[0] - 1.5 * inset_size * (ylim[1] - ylim[0]))
+    inset_ax = ax_act.inset_axes([0, 0, 1, 0.2])
+    inset_ax.set_axis_off()
+    ax_act.get_shared_x_axes().join(ax_act, inset_ax)
+    sns.boxplot(ax=inset_ax, x=x, y=group, orient="h",
+                showmeans=True, meanprops={"marker": "x", "markerfacecolor": "black", "markeredgecolor": "black"})
+
+
+# Scatterplot as heatmap
+def plot_biscatter(ax, x, y, xlabel=None, ylabel=None,
+                   title=None, xlim=None, ylim=None,
+                   regplot=False, smooth=0.5,
+                   add_y_density=True, add_x_density=True,
+                   add_boxplot=True,
+                   inset_size=0.2,
+                   add_colorbar=True):
+
+    ax_act = ax
+
+    # Remove names
+    if (xlabel is not None) and isinstance(x, pd.Series):
+        x.name = xlabel
+    if (ylabel is not None) and isinstance(y, pd.Series):
+        y.name = ylabel
+
+    '''
+    # Helper for scaling of heat-points
+    heat_scale = 1
+    if ylim is not None:
+        ax_act.set_ylim(ylim)
+        heat_scale = heat_scale * (ylim[1] - ylim[0]) / (np.max(y) - np.min(y))
+    if xlim is not None:
+        ax_act.set_xlim(xlim)
+        heat_scale = heat_scale * (xlim[1] - xlim[0]) / (np.max(x) - np.min(x))
+    '''
+
+    # Heatmap
+    heat_cmap = LinearSegmentedColormap.from_list("bl_yl_rd", ["blue", "yellow", "red"])
+    #p = ax_act.hexbin(x, y, gridsize=(int(50 * heat_scale), 50), mincnt=1, cmap=heat_cmap)
+    p = ax_act.hexbin(x, y, mincnt=1, cmap=heat_cmap)
+    if add_colorbar:
+        plt.colorbar(p, ax=ax_act)
+
+    # Spline
+    if regplot:
+        if len(x) < 1000:
+            sns.regplot(x=x, y=y, lowess=True, scatter=False, color="black", ax=ax_act)
+        else:
+            df_spline = (pd.DataFrame({"x": x, "y": y})
+                         .groupby("x")[["y"]].agg(["mean", "count"])
+                         .pipe(lambda x: x.set_axis([a + "_" + b for a, b in x.columns],
+                                                    axis=1, inplace=False))
+                         .assign(w=lambda x: np.sqrt(x["y_count"]))
+                         .sort_values("x")
+                         .reset_index())
+            spl = splrep(x=df_spline["x"].values, y=df_spline["y_mean"].values, w=df_spline["w"].values,
+                         s=len(x) * smooth)
+            x2 = np.quantile(df_spline["x"].values, np.arange(0.01, 1, 0.01))
+            y2 = splev(x2, spl)
+            ax_act.plot(x2, y2, color="black")
+
+    # Set labels
+    ax_act.set_ylabel(ylabel)
+    ax_act.set_xlabel(xlabel)
+    if title is not None:
+        ax_act.set_title(title)
+
+    # Get limits before any insetting
+    if ylim is None:
+        ylim = ax_act.get_ylim()
+    if xlim is None:
+        xlim = ax_act.get_xlim()
+
+    # Add y density
+    if add_y_density:
+        # Inner Histogram on y
+        inset_ax_y = ax_act.inset_axes([0, 0, inset_size, 1], zorder=10)
+        inset_ax_y.get_xaxis().set_visible(False)
+        ax_act.get_shared_y_axes().join(ax_act, inset_ax_y)
+        sns.histplot(y=y, color="grey", stat="density", kde=True, bins=20, ax=inset_ax_y)
+
+        if add_boxplot:
+            # Inner-inner Boxplot on y
+            xlim_inner = inset_ax_y.get_xlim()
+            inset_ax_y.set_xlim(xlim_inner[0] - 1.5 * inset_size * (xlim_inner[1] - xlim_inner[0]))
+            inset_inset_ax_y = inset_ax_y.inset_axes([0, 0, inset_size, 1])
+            inset_inset_ax_y.set_axis_off()
+            inset_ax_y.get_shared_y_axes().join(inset_ax_y, inset_inset_ax_y)
+            sns.boxplot(y=y, color="lightgrey", orient="v",
+                        showmeans=True, meanprops={"marker": "x",
+                                                   "markerfacecolor": "white", "markeredgecolor": "white"},
+                        ax=inset_inset_ax_y)
+
+    # Add x density
+    if add_x_density:
+        # Inner Histogram on x
+        inset_ax_x = ax_act.inset_axes([0, 0, 1, inset_size], zorder=10)
+        inset_ax_x.get_yaxis().set_visible(False)
+        ax_act.get_shared_x_axes().join(ax_act, inset_ax_x)
+        sns.histplot(x=x, color="grey", stat="density", kde=True, bins=20, ax=inset_ax_x)
+
+        if add_boxplot:
+            # Inner-inner Boxplot on x
+            ylim_inner = inset_ax_x.get_ylim()
+            inset_ax_x.set_ylim(ylim_inner[0] - 1.5 * inset_size * (ylim_inner[1] - ylim_inner[0]))
+            inset_inset_ax_x = inset_ax_x.inset_axes([0, 0, 1, inset_size])
+            inset_inset_ax_x.set_axis_off()
+            inset_ax_x.get_shared_x_axes().join(inset_ax_x, inset_inset_ax_x)
+            sns.boxplot(x=x, color="lightgrey",
+                        showmeans=True, meanprops={"marker": "x", "markerfacecolor": "white",
+                                                   "markeredgecolor": "white"},
+                        ax=inset_inset_ax_x)
+
+    '''
+    if ylim is not None:
+        inset_inset_ax_y.set_ylim(ylim)
+        inset_ax_y.set_ylim(ylim)
+        
+    if xlim is not None:
+        inset_inset_ax_x.set_xlim(xlim)
+        inset_ax_x.set_xlim(xlim)
+    '''
+
+    # Set limits
+    ax_act.set_ylim(ylim[0] - 1.5 * inset_size * (ylim[1] - ylim[0]), ylim[1])
+    ax_act.set_xlim(xlim[0] - 1.5 * inset_size * (xlim[1] - xlim[0]), xlim[1])
+
+    # Hide intersection
+    if add_y_density and add_x_density:
+        inset_ax_over = ax_act.inset_axes([0, 0, inset_size, inset_size], zorder=20)
+        inset_ax_over.set_facecolor("white")
+        inset_ax_over.get_xaxis().set_visible(False)
+        inset_ax_over.get_yaxis().set_visible(False)
+
+
+def plot_bibar(ax, x, y, xlabel=None, ylabel=None, label_yes=None,
+               min_width=0.2, inset_size=0.2, ylim=None,
+               refline=True, title=None,
+               color=up.colorblind[1]):
+
+    ax_act = ax
+
+    # Adapt labels
+    if (xlabel is None) and isinstance(x, pd.Series):
+        xlabel = x.name
+    if (ylabel is None) and isinstance(y, pd.Series):
+        ylabel = y.name
+
+    # Convert to series
+    x = pd.Series(x).rename("x")
+    y = pd.Series(y).rename("y")
+
+    # Get "yes" class
+    if label_yes is None:
+        label_yes = y.value_counts().sort_values().index.values[0]
+
+    # Define title
+    if title is None:
+        title = xlabel
+
+    # Prepare data
+    df_hlp = pd.crosstab(x, y)
+    df_plot = (df_hlp.div(df_hlp.sum(axis=1), axis=0)
+               .assign(w=df_hlp.sum(axis=1))
+               .reset_index()
+               .assign(pct=lambda x: 100 * x["w"] / df_hlp.values.sum())
+               .assign(w=lambda x: 0.9 * x["w"] / x["w"].max())
+               .assign(x_fmt=lambda x: x["x"] + x["pct"].map("( {:,.1f} %)".format))
+               .assign(w=lambda x: np.where(x["w"] < min_width, min_width, x["w"])))
+
+    # Barplot
+    ax_act.barh(df_plot["x_fmt"], df_plot[label_yes], height=df_plot["w"],
+                color=color, edgecolor="black", alpha=0.5, linewidth=1)
+    ax_act.set_xlabel("avg(" + ylabel + ")")
+    ax_act.set_title(title)
+    if ylim is not None:
+        ax_act.set_xlim(ylim)
+
+    # Refline
+    if refline:
+        ax_act.axvline((y == label_yes).sum() / len(y), ls="dotted", color="black")
+
+    # Inner barplot
+    xlim = ax_act.get_xlim()
+    ax_act.set_xlim(xlim[0] - 1.5 * inset_size * (xlim[1] - xlim[0]))
+    inset_ax = ax_act.inset_axes([0, 0, inset_size, 1], zorder=10)
+    inset_ax.set_axis_off()
+    ax_act.axvline(xlim[0], color="black")  # separation line
+    ax_act.get_shared_y_axes().join(ax_act, inset_ax)
+    inset_ax.barh(df_plot["x_fmt"], df_plot.w,
+                  color="lightgrey", edgecolor="black", linewidth=1)
+   
+########################################################################################################################
+# Exploration plots
+########################################################################################################################
+
+# --- Classification ---------------------------------------------------------------------------------------
+   
+def plot_CLASS_cate(ax, target, feature, target_label=None, feature_label=None,
+                    min_width=0.2, inset_size=0.2, ylim=None,
+                    refline=True, varimp=None, varimp_fmt="0.2f",
+                    color=up.colorblind[1]):
+
+    # Adapt labels
+    if not isinstance(target, pd.Series):
+        target = pd.Series(target)
+        target.name = target_label
+    if not isinstance(feature, pd.Series):
+        feature = pd.Series(feature)
+        feature.name = feature_label
+
+    # Add title
+    title = feature.name
+    if varimp is not None:
+        title = title + " (VI: " + format(varimp, varimp_fmt) + ")"
+
+    plot_bibar(ax, x=feature, y=target, title=title,
+               min_width=min_width, inset_size=inset_size, ylim=ylim,
+               refline=refline,
+               color=color)
+
+#def plot_CLASS_nume
+
+
+
+# --- Regression ---------------------------------------------------------------------------------------
+
+#def plot_REGR_cate
+#def plot_REGR_nume
+
+#def plot_target_nume
+#def plot_target_cate
+
+# --- Plot whole feature vector-------------------------------------------------------------------------------------
+#def get_plotcalls_target_vs_features:
+#
+#    return l_calls
+
+
+########################################################################################################################
+# Interpretation plots
+########################################################################################################################
+    
 # Plot ROC curve
 def plot_roc(ax, y, yhat):
     #y = df_test[target_name]
@@ -194,7 +465,7 @@ def get_plot_model_performance_CLASS(y, yhat,
     d_calls = dict()
     d_calls["roc"] = (plot_roc, dict(y=y, yhat=yhat))
     d_calls["confusion"] = (plot_confusion, dict(y=y, yhat=yhat, threshold=threshold, cmap=cmap))
-    d_calls["distribution"] = (plot_distribution, dict(x=yhat, group=y, xlim=(0, 1)))
+    d_calls["distribution"] = (plot_bidistribution, dict(x=yhat, group=y, xlim=(0, 1)))
     d_calls["calibration"] = (plot_calibration, dict(y=y, yhat=yhat, n_bins=n_bins))
     d_calls["precision_recall"] = (plot_precision_recall, dict(y=y, yhat=yhat, annotate=annotate, fontsize=fontsize))
     d_calls["precision"] = (plot_precision, dict(y=y, yhat=yhat, annotate=annotate, fontsize=fontsize))
@@ -203,7 +474,7 @@ def get_plot_model_performance_CLASS(y, yhat,
 
 
 # Plot model performance for CLASS target
-def get_plot_model_performance_REGR(y, yhat,
+def get_plotcalls_model_performance_REGR(y, yhat,
                                     ylim, regplot, n_bins):
 
     # yhat to 1-dim
@@ -212,31 +483,31 @@ def get_plot_model_performance_REGR(y, yhat,
 
     # Define plot dict
     d_calls = dict()
-    title = r"Observed vs. Fitted ($\rho_{Spearman}$ = " + format(my.spear(y, yhat), "0.2f") + ")"
-    d_calls["observed_vs_fitted"] = (plot_scatter, dict(x=yhat, y=y, xlabel=r"$\^y$", ylabel="y",
+    title = r"Observed vs. Fitted ($\rho_{Spearman}$ = " + format(up.spear(y, yhat), "0.2f") + ")"
+    d_calls["observed_vs_fitted"] = (plot_biscatter, dict(x=yhat, y=y, xlabel=r"$\^y$", ylabel="y",
                                                         title=title,
                                                         xlim=ylim,
                                                         regplot=regplot))
     d_calls["calibration"] = (plot_calibration, dict(y=y, yhat=yhat, n_bins=n_bins))
-    d_calls["distribution"] = (plot_distribution, dict(x=np.append(y, yhat),
+    d_calls["distribution"] = (plot_bidistribution, dict(x=np.append(y, yhat),
                                                        group=np.append(np.tile("y", len(y)),
                                                                         np.tile(r"$\^y$", len(yhat))),
                                                        title="Distribution"))
-    d_calls["residuals_vs_fitted"] = (plot_scatter, dict(x=yhat, y=y - yhat,
+    d_calls["residuals_vs_fitted"] = (plot_biscatter, dict(x=yhat, y=y - yhat,
                                                          xlabel=r"$\^y$", 
                                                          ylabel=r"y-$\^y$",
                                                          title="Residuals vs. Fitted",
                                                          xlim=ylim,
                                                          regplot=regplot))
 
-    d_calls["absolute_residuals_vs_fitted"] = (plot_scatter, dict(x=yhat, y=abs(y - yhat),
+    d_calls["absolute_residuals_vs_fitted"] = (plot_biscatter, dict(x=yhat, y=abs(y - yhat),
                                                                   xlabel=r"$\^y$", 
                                                                   ylabel=r"|y-$\^y$|",
                                                                   title="Absolute Residuals vs. Fitted",
                                                                   xlim=ylim,
                                                                   regplot=regplot))
 
-    d_calls["relative_residuals_vs_fitted"] = (plot_scatter, dict(x=yhat, y=abs(y - yhat) / abs(y),
+    d_calls["relative_residuals_vs_fitted"] = (plot_biscatter, dict(x=yhat, y=abs(y - yhat) / abs(y),
                                                                   xlabel=r"$\^y$", 
                                                                   ylabel=r"|y-$\^y$|/|y|",
                                                                   title="Relative Residuals vs. Fitted",
@@ -247,7 +518,7 @@ def get_plot_model_performance_REGR(y, yhat,
 
 
 # Wrapper for plot_model_performance_<target_type>
-def plot_model_performance(y, yhat, target_type=None,
+def get_plotcalls_model_performance(y, yhat, target_type=None,
                            n_bins=5, threshold=0.5, cmap="Blues", annotate=True, fontsize=10,
                            ylim=None, regplot=False,
                            l_plots=None,
@@ -277,250 +548,9 @@ def plot_model_performance(y, yhat, target_type=None,
         l_calls = list(d_calls.values())
 
     # plot
-    my.plot_function_calls(l_calls, n_rows=n_rows, n_cols=n_cols, figsize=(w, h), pdf_path=pdf_path)
+    #up.plot_function_calls(l_calls, n_rows=n_rows, n_cols=n_cols, figsize=(w, h), pdf_path=pdf_path)
     
 
-def plot_distribution(ax, x, group, n_bins=20, xlim=None, xlabel=None, title=None, legend_title=None, inset_size=0.2):
-    
-    ax_act = ax
-    
-    # Distribution
-    '''
-    members = np.sort(df[target].unique())
-    for m, member in enumerate(members):
-        sns.distplot(df.loc[df[target] == member, feature_act].dropna(),
-                        color=color[m],
-                        bins=20,
-                        label=member,
-                        ax=ax_act)
-    if varimp is not None:
-        ax_act.set_title(feature_act + " (VI: " + str(varimp[feature_act]) + ")")
-    else:
-        ax_act.set_title(feature_act)
-    '''
-    sns.histplot(ax=ax_act, x=x, hue=group, stat="density", common_norm=False, kde=True, bins=n_bins)
-    ax_act.set_ylabel("Density")
-    if xlabel is not None:
-        ax_act.set_xlabel(xlabel)
-    #ax_act.legend(title=legend_title, loc = "best")
-    if title is not None:
-        ax_act.set_title(title)
-
-    # Inner Boxplot
-    ylim = ax_act.get_ylim()
-    ax_act.set_ylim(ylim[0] - 1.5 * inset_size * (ylim[1] - ylim[0]))
-    inset_ax = ax_act.inset_axes([0, 0, 1, 0.2])
-    inset_ax.set_axis_off()
-    ax_act.get_shared_x_axes().join(ax_act, inset_ax)
-    sns.boxplot(ax=inset_ax, x=x, y=group, orient="h",
-                showmeans=True, meanprops={"marker": "x", "markerfacecolor": "black", "markeredgecolor": "black"})
-    
-    
-# Scatterplot as heatmap
-def plot_scatter(ax, x, y, xlabel=None, ylabel=None,
-                 title=None, xlim=None, ylim=None,
-                 regplot=False, smooth=0.5,
-                 add_y_density=True, add_x_density=True,
-                 add_boxplot=True,
-                 inset_size=0.2,
-                 add_colorbar=True):
-
-    ax_act = ax
-    
-    # Remove names
-    if (xlabel is not None) and isinstance(x, pd.Series):
-        x.name = xlabel
-    if (ylabel is not None) and isinstance(y, pd.Series):
-        y.name = ylabel
-        
-    '''
-    # Helper for scaling of heat-points
-    heat_scale = 1
-    if ylim is not None:
-        ax_act.set_ylim(ylim)
-        heat_scale = heat_scale * (ylim[1] - ylim[0]) / (np.max(y) - np.min(y))
-    if xlim is not None:
-        ax_act.set_xlim(xlim)
-        heat_scale = heat_scale * (xlim[1] - xlim[0]) / (np.max(x) - np.min(x))
-    '''
-    
-    # Heatmap
-    heat_cmap = LinearSegmentedColormap.from_list("bl_yl_rd", ["blue", "yellow", "red"])
-    #p = ax_act.hexbin(x, y, gridsize=(int(50 * heat_scale), 50), mincnt=1, cmap=heat_cmap)
-    p = ax_act.hexbin(x, y, mincnt=1, cmap=heat_cmap)
-    if add_colorbar:
-        plt.colorbar(p, ax=ax_act)
-        
-    # Spline
-    if regplot:
-        if len(x) < 1000:
-            sns.regplot(x=x, y=y, lowess=True, scatter=False, color="black", ax=ax_act)
-        else:
-            df_spline = (pd.DataFrame({"x": x, "y": y})
-                         .groupby("x")[["y"]].agg(["mean", "count"])
-                         .pipe(lambda x: x.set_axis([a + "_" + b for a, b in x.columns],
-                                                    axis=1, inplace=False))
-                         .assign(w=lambda x: np.sqrt(x["y_count"]))
-                         .sort_values("x")
-                         .reset_index())
-            spl = splrep(x=df_spline["x"].values, y=df_spline["y_mean"].values, w=df_spline["w"].values,
-                         s=len(x) * smooth)
-            x2 = np.quantile(df_spline["x"].values, np.arange(0.01, 1, 0.01))
-            y2 = splev(x2, spl)
-            ax_act.plot(x2, y2, color="black")
-
-    # Set labels
-    ax_act.set_ylabel(ylabel)
-    ax_act.set_xlabel(xlabel)
-    if title is not None:
-        ax_act.set_title(title)
-
-    # Get limits before any insetting
-    if ylim is None:
-        ylim = ax_act.get_ylim()
-    if xlim is None:
-        xlim = ax_act.get_xlim()
-
-    # Add y density
-    if add_y_density:
-        # Inner Histogram on y
-        inset_ax_y = ax_act.inset_axes([0, 0, inset_size, 1], zorder=10)
-        inset_ax_y.get_xaxis().set_visible(False)
-        ax_act.get_shared_y_axes().join(ax_act, inset_ax_y)
-        sns.histplot(y=y, color="grey", stat="density", kde=True, bins=20, ax=inset_ax_y)
-        
-        if add_boxplot:
-            # Inner-inner Boxplot on y
-            xlim_inner = inset_ax_y.get_xlim()
-            inset_ax_y.set_xlim(xlim_inner[0] - 1.5 * inset_size * (xlim_inner[1] - xlim_inner[0]))
-            inset_inset_ax_y = inset_ax_y.inset_axes([0, 0, inset_size, 1])
-            inset_inset_ax_y.set_axis_off()
-            inset_ax_y.get_shared_y_axes().join(inset_ax_y, inset_inset_ax_y)
-            sns.boxplot(y=y, color="lightgrey", orient="v",
-                        showmeans=True, meanprops={"marker": "x", 
-                                                   "markerfacecolor": "white", "markeredgecolor": "white"},
-                        ax=inset_inset_ax_y)
-
-    # Add x density
-    if add_x_density:
-        # Inner Histogram on x
-        inset_ax_x = ax_act.inset_axes([0, 0, 1, inset_size], zorder=10)
-        inset_ax_x.get_yaxis().set_visible(False)
-        ax_act.get_shared_x_axes().join(ax_act, inset_ax_x)
-        sns.histplot(x=x, color="grey", stat="density", kde=True, bins=20, ax=inset_ax_x)
-
-        if add_boxplot:
-            # Inner-inner Boxplot on x
-            ylim_inner = inset_ax_x.get_ylim()
-            inset_ax_x.set_ylim(ylim_inner[0] - 1.5 * inset_size * (ylim_inner[1] - ylim_inner[0]))
-            inset_inset_ax_x = inset_ax_x.inset_axes([0, 0, 1, inset_size])
-            inset_inset_ax_x.set_axis_off()
-            inset_ax_x.get_shared_x_axes().join(inset_ax_x, inset_inset_ax_x)
-            sns.boxplot(x=x, color="lightgrey",
-                        showmeans=True, meanprops={"marker": "x", "markerfacecolor": "white", 
-                                                   "markeredgecolor": "white"}, 
-                        ax=inset_inset_ax_x)
-
-    '''
-    if ylim is not None:
-        inset_inset_ax_y.set_ylim(ylim)
-        inset_ax_y.set_ylim(ylim)
-        
-    if xlim is not None:
-        inset_inset_ax_x.set_xlim(xlim)
-        inset_ax_x.set_xlim(xlim)
-    '''
-
-    # Set limits
-    ax_act.set_ylim(ylim[0] - 1.5 * inset_size * (ylim[1] - ylim[0]), ylim[1])  
-    ax_act.set_xlim(xlim[0] - 1.5 * inset_size * (xlim[1] - xlim[0]), xlim[1]) 
-
-    # Hide intersection
-    if add_y_density and add_x_density:
-        inset_ax_over = ax_act.inset_axes([0, 0, inset_size, inset_size], zorder=20)
-        inset_ax_over.set_facecolor("white")
-        inset_ax_over.get_xaxis().set_visible(False)
-        inset_ax_over.get_yaxis().set_visible(False)
 
 
-def plot_bibar(ax, x, y, xlabel=None, ylabel=None, label_yes=None,
-               min_width=0.2, inset_size=0.2, ylim=None,
-               refline=True, title=None,
-               color=up.colorblind[1]):
-
-    ax_act = ax
-
-    # Adapt labels
-    if (xlabel is None) and isinstance(x, pd.Series):
-        xlabel = x.name
-    if (ylabel is None) and isinstance(y, pd.Series):
-        ylabel = y.name
-
-    # Convert to series
-    x = pd.Series(x).rename("x")
-    y = pd.Series(y).rename("y")
-
-    # Get "yes" class
-    if label_yes is None:
-        label_yes = y.value_counts().sort_values().index.values[0]
-
-    # Define title
-    if title is None:
-        title = xlabel
-
-    # Prepare data
-    df_hlp = pd.crosstab(x, y)
-    df_plot = (df_hlp.div(df_hlp.sum(axis=1), axis=0)
-               .assign(w=df_hlp.sum(axis=1))
-               .reset_index()
-               .assign(pct=lambda x: 100 * x["w"] / df_hlp.values.sum())
-               .assign(w=lambda x: 0.9 * x["w"] / x["w"].max())
-               .assign(x_fmt=lambda x: x["x"] + x["pct"].map("( {:,.1f} %)".format))
-               .assign(w=lambda x: np.where(x["w"] < min_width, min_width, x["w"])))
-
-    # Barplot
-    ax_act.barh(df_plot["x_fmt"], df_plot[label_yes], height=df_plot["w"],
-                color=color, edgecolor="black", alpha=0.5, linewidth=1)
-    ax_act.set_xlabel("avg(" + ylabel + ")")
-    ax_act.set_title(title)
-    if ylim is not None:
-        ax_act.set_xlim(ylim)
-
-    # Refline
-    if refline:
-        ax_act.axvline((y == label_yes).sum() / len(y), ls="dotted", color="black")
-
-    # Inner barplot
-    xlim = ax_act.get_xlim()
-    ax_act.set_xlim(xlim[0] - 1.5 * inset_size * (xlim[1] - xlim[0]))
-    inset_ax = ax_act.inset_axes([0, 0, inset_size, 1], zorder=10)
-    inset_ax.set_axis_off()
-    ax_act.axvline(xlim[0], color="black")  # separation line
-    ax_act.get_shared_y_axes().join(ax_act, inset_ax)
-    inset_ax.barh(df_plot["x_fmt"], df_plot.w,
-                  color="lightgrey", edgecolor="black", linewidth=1)
-
-
-def plot_CLASS_cate(ax, target, feature, target_label=None, feature_label=None,
-                        min_width=0.2, inset_size=0.2, ylim=None,
-                        refline=True, varimp=None, varimp_fmt="0.2f",
-                        color=up.colorblind[1]):
-    
-    # Adapt labels
-    if not isinstance(target, pd.Series):
-        target = pd.Series(target)
-        target.name = target_label
-    if not isinstance(feature, pd.Series):
-        feature = pd.Series(feature)
-        feature.name = feature_label      
-        
-    # Add title
-    title = feature.name
-    if varimp is not None:
-        title = title + " (VI: " + format(varimp, varimp_fmt) + ")"
-        
-    plot_bibar(ax, x=feature, y=target, title=title,
-                     min_width=min_width, inset_size=inset_size, ylim=ylim,
-                     refline=refline,
-                     color=color)
 
