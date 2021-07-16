@@ -15,7 +15,7 @@ import warnings
 import time
 
 # Scikit
-from sklearn.metrics import (make_scorer, roc_auc_score, accuracy_score, roc_curve, confusion_matrix, 
+from sklearn.metrics import (make_scorer, roc_auc_score, accuracy_score, roc_curve, confusion_matrix,
                              precision_recall_curve, average_precision_score)
 from sklearn.calibration import calibration_curve
 from sklearn.model_selection import cross_val_score, GridSearchCV, check_cv, KFold
@@ -82,7 +82,7 @@ def plot_bidistribution(ax, x, group, n_bins=20, xlim=None, xlabel=None, title=N
 def plot_biscatter(ax, x, y, xlabel=None, ylabel=None,
                    title=None, xlim=None, ylim=None,
                    regplot=False, smooth=0.5,
-                   add_y_density=True, add_x_density=True,
+                   add_y_density=True, add_x_density=True, n_bins=20,
                    add_boxplot=True,
                    inset_size=0.2,
                    add_colorbar=True):
@@ -149,7 +149,7 @@ def plot_biscatter(ax, x, y, xlabel=None, ylabel=None,
         inset_ax_y = ax_act.inset_axes([0, 0, inset_size, 1], zorder=10)
         inset_ax_y.get_xaxis().set_visible(False)
         ax_act.get_shared_y_axes().join(ax_act, inset_ax_y)
-        sns.histplot(y=y, color="grey", stat="density", kde=True, bins=20, ax=inset_ax_y)
+        sns.histplot(y=y, color="grey", stat="density", kde=True, bins=n_bins, ax=inset_ax_y)
 
         if add_boxplot:
             # Inner-inner Boxplot on y
@@ -169,7 +169,7 @@ def plot_biscatter(ax, x, y, xlabel=None, ylabel=None,
         inset_ax_x = ax_act.inset_axes([0, 0, 1, inset_size], zorder=10)
         inset_ax_x.get_yaxis().set_visible(False)
         ax_act.get_shared_x_axes().join(ax_act, inset_ax_x)
-        sns.histplot(x=x, color="grey", stat="density", kde=True, bins=20, ax=inset_ax_x)
+        sns.histplot(x=x, color="grey", stat="density", kde=True, bins=n_bins, ax=inset_ax_x)
 
         if add_boxplot:
             # Inner-inner Boxplot on x
@@ -205,6 +205,18 @@ def plot_biscatter(ax, x, y, xlabel=None, ylabel=None,
         inset_ax_over.get_yaxis().set_visible(False)
 
 
+def helper_calc_barboxwidth(x, y, minwidth=0.2):
+    df_hlp = pd.crosstab(x, y)
+    df_barboxwidth = (df_hlp.div(df_hlp.sum(axis=1), axis=0)
+               .assign(w=df_hlp.sum(axis=1))
+               .reset_index()
+               .assign(pct=lambda x: 100 * x["w"] / df_hlp.values.sum())
+               .assign(w=lambda x: 0.9 * x["w"] / x["w"].max())
+               .assign(x_fmt=lambda x: x["x"] + x["pct"].map("( {:,.1f} %)".format))
+               .assign(w=lambda x: np.where(x["w"] < min_width, min_width, x["w"])))
+    return df_barboxwidth
+
+
 def plot_bibar(ax, x, y, xlabel=None, ylabel=None, label_yes=None,
                min_width=0.2, inset_size=0.2, ylim=None,
                refline=True, title=None,
@@ -231,14 +243,7 @@ def plot_bibar(ax, x, y, xlabel=None, ylabel=None, label_yes=None,
         title = xlabel
 
     # Prepare data
-    df_hlp = pd.crosstab(x, y)
-    df_plot = (df_hlp.div(df_hlp.sum(axis=1), axis=0)
-               .assign(w=df_hlp.sum(axis=1))
-               .reset_index()
-               .assign(pct=lambda x: 100 * x["w"] / df_hlp.values.sum())
-               .assign(w=lambda x: 0.9 * x["w"] / x["w"].max())
-               .assign(x_fmt=lambda x: x["x"] + x["pct"].map("( {:,.1f} %)".format))
-               .assign(w=lambda x: np.where(x["w"] < min_width, min_width, x["w"])))
+    df_plot = df_barboxwidth(x, y, minwidth=minwidth)
 
     # Barplot
     ax_act.barh(df_plot["x_fmt"], df_plot[label_yes], height=df_plot["w"],
@@ -261,13 +266,15 @@ def plot_bibar(ax, x, y, xlabel=None, ylabel=None, label_yes=None,
     ax_act.get_shared_y_axes().join(ax_act, inset_ax)
     inset_ax.barh(df_plot["x_fmt"], df_plot.w,
                   color="lightgrey", edgecolor="black", linewidth=1)
-   
+
+
 ########################################################################################################################
 # Exploration plots
 ########################################################################################################################
 
 # --- Classification ---------------------------------------------------------------------------------------
-   
+
+
 def plot_CLASS_cate(ax, target, feature, target_label=None, feature_label=None,
                     min_width=0.2, inset_size=0.2, ylim=None,
                     refline=True, varimp=None, varimp_fmt="0.2f",
@@ -294,7 +301,6 @@ def plot_CLASS_cate(ax, target, feature, target_label=None, feature_label=None,
 #def plot_CLASS_nume
 
 
-
 # --- Regression ---------------------------------------------------------------------------------------
 
 #def plot_REGR_cate
@@ -306,13 +312,13 @@ def plot_CLASS_cate(ax, target, feature, target_label=None, feature_label=None,
 # --- Plot whole feature vector-------------------------------------------------------------------------------------
 #def get_plotcalls_target_vs_features:
 #
-#    return l_calls
+#    return d_calls
 
 
 ########################################################################################################################
 # Interpretation plots
 ########################################################################################################################
-    
+
 # Plot ROC curve
 def plot_roc(ax, y, yhat):
     #y = df_test[target_name]
@@ -358,7 +364,7 @@ def plot_calibration(ax, y, yhat, n_bins=5):
              'ylabel': r"$\bar{y}$ in $\^y$-bin",
              'title': "Calibration"}
     _ = ax_act.set(**props)
-    
+
     # Add diagonal line
     minmin = min(np.min(y), np.min(yhat))
     maxmax = max(np.max(y), np.max(yhat))
@@ -369,21 +375,22 @@ def plot_calibration(ax, y, yhat, n_bins=5):
 def plot_confusion(ax, y, yhat, threshold=0.5, cmap="Blues"):
 
     ax_act = ax
-    
+
     # binary label
     yhat_bin = np.where(yhat > threshold, 1, 0)
-    
+
     # accuracy and confusion calculation
-    acc = accuracy_score(y, yhat_bin)    
+    acc = accuracy_score(y, yhat_bin)
     df_conf = pd.DataFrame(confusion_matrix(y, yhat_bin))
 
     # plot
-    sns.heatmap(pd.DataFrame(confusion_matrix(y, yhat_bin)), 
+    sns.heatmap(pd.DataFrame(confusion_matrix(y, yhat_bin)),
                 annot=True, fmt=".5g", cmap=cmap, ax=ax_act)
     props = {'xlabel': "Predicted label",
              'ylabel': "True label",
              'title': "Confusion Matrix ($Acc_{" + format(threshold, "0.2f") + "}$ = " + format(acc, "0.2f") + ")"}
     ax_act.set(**props)
+
 
 '''
 def plot_pred_distribution(ax, y, yhat, xlim=None):
@@ -398,25 +405,27 @@ def plot_pred_distribution(ax, y, yhat, xlim=None):
              'xlim': xlim}
     ax_act.set(**props)
     #ax_act.legend(title="Target", loc="best")
-'''    
-    
+'''
+
 # Plot precision-recall curve
+
+
 def plot_precision_recall(ax, y, yhat, annotate=True, fontsize=10):
 
     ax_act = ax
-        
+
     # precision recall calculation
     prec, rec, cutoff = precision_recall_curve(y, yhat)
     cutoff = np.append(cutoff, 1)
     prec_rec_auc = average_precision_score(y, yhat)
-    
+
     # plot
     ax_act.plot(rec, prec)
     props = {'xlabel': r"recall=tpr: P($\^y$=1|$y$=1)",
              'ylabel': r"precision: P($y$=1|$\^y$=1)",
              'title': "Precision Recall Curve (AUC = " + format(prec_rec_auc, "0.2f") + ")"}
     ax_act.set(**props)
-    
+
     # annotate text
     if annotate:
         for thres in np.arange(0.1, 1, 0.1):
@@ -435,7 +444,7 @@ def plot_precision(ax, y, yhat, annotate=True, fontsize=10):
     cutoff = np.append(cutoff, 1)
     for thres in cutoff:
         pct_tested = np.append(pct_tested, [np.sum(yhat >= thres) / len(yhat)])
-    
+
     # plot
     #sns.lineplot(pct_tested, prec[:-1], ax=ax_act, palette=sns.xkcd_palette(["red"]))
     ax_act.plot(pct_tested, prec)
@@ -449,18 +458,18 @@ def plot_precision(ax, y, yhat, annotate=True, fontsize=10):
         for thres in np.arange(0.1, 1, 0.1):
             i_thres = np.argmax(cutoff > thres)
             if i_thres:
-                ax_act.annotate(format(thres, "0.1f"), (pct_tested[i_thres], prec[i_thres]), 
+                ax_act.annotate(format(thres, "0.1f"), (pct_tested[i_thres], prec[i_thres]),
                                 fontsize=fontsize)
 
 
 # Plot model performance for CLASS target
-def get_plot_model_performance_CLASS(y, yhat,
-                                 n_bins=5, threshold=0.5, cmap="Blues", annotate=True, fontsize=10):
+def get_plotcalls_model_performance_CLASS(y, yhat,
+                                          n_bins=5, threshold=0.5, cmap="Blues", annotate=True, fontsize=10):
 
     # yhat to 1-dim
     if ((yhat.ndim == 2) and (yhat.shape[1] == 2)):
         yhat = yhat[:, 1]
-        
+
     # Define plot dict
     d_calls = dict()
     d_calls["roc"] = (plot_roc, dict(y=y, yhat=yhat))
@@ -475,7 +484,7 @@ def get_plot_model_performance_CLASS(y, yhat,
 
 # Plot model performance for CLASS target
 def get_plotcalls_model_performance_REGR(y, yhat,
-                                    ylim, regplot, n_bins):
+                                         ylim, regplot, n_bins):
 
     # yhat to 1-dim
     if ((yhat.ndim == 2) and (yhat.shape[1] == 2)):
@@ -485,56 +494,55 @@ def get_plotcalls_model_performance_REGR(y, yhat,
     d_calls = dict()
     title = r"Observed vs. Fitted ($\rho_{Spearman}$ = " + format(up.spear(y, yhat), "0.2f") + ")"
     d_calls["observed_vs_fitted"] = (plot_biscatter, dict(x=yhat, y=y, xlabel=r"$\^y$", ylabel="y",
-                                                        title=title,
-                                                        xlim=ylim,
-                                                        regplot=regplot))
+                                                          title=title,
+                                                          xlim=ylim,
+                                                          regplot=regplot))
     d_calls["calibration"] = (plot_calibration, dict(y=y, yhat=yhat, n_bins=n_bins))
     d_calls["distribution"] = (plot_bidistribution, dict(x=np.append(y, yhat),
-                                                       group=np.append(np.tile("y", len(y)),
-                                                                        np.tile(r"$\^y$", len(yhat))),
-                                                       title="Distribution"))
+                                                         group=np.append(np.tile("y", len(y)),
+                                                                         np.tile(r"$\^y$", len(yhat))),
+                                                         title="Distribution"))
     d_calls["residuals_vs_fitted"] = (plot_biscatter, dict(x=yhat, y=y - yhat,
-                                                         xlabel=r"$\^y$", 
-                                                         ylabel=r"y-$\^y$",
-                                                         title="Residuals vs. Fitted",
-                                                         xlim=ylim,
-                                                         regplot=regplot))
+                                                           xlabel=r"$\^y$",
+                                                           ylabel=r"y-$\^y$",
+                                                           title="Residuals vs. Fitted",
+                                                           xlim=ylim,
+                                                           regplot=regplot))
 
     d_calls["absolute_residuals_vs_fitted"] = (plot_biscatter, dict(x=yhat, y=abs(y - yhat),
-                                                                  xlabel=r"$\^y$", 
-                                                                  ylabel=r"|y-$\^y$|",
-                                                                  title="Absolute Residuals vs. Fitted",
-                                                                  xlim=ylim,
-                                                                  regplot=regplot))
+                                                                    xlabel=r"$\^y$",
+                                                                    ylabel=r"|y-$\^y$|",
+                                                                    title="Absolute Residuals vs. Fitted",
+                                                                    xlim=ylim,
+                                                                    regplot=regplot))
 
     d_calls["relative_residuals_vs_fitted"] = (plot_biscatter, dict(x=yhat, y=abs(y - yhat) / abs(y),
-                                                                  xlabel=r"$\^y$", 
-                                                                  ylabel=r"|y-$\^y$|/|y|",
-                                                                  title="Relative Residuals vs. Fitted",
-                                                                  xlim=ylim,
-                                                                  regplot=regplot))
-    
+                                                                    xlabel=r"$\^y$",
+                                                                    ylabel=r"|y-$\^y$|/|y|",
+                                                                    title="Relative Residuals vs. Fitted",
+                                                                    xlim=ylim,
+                                                                    regplot=regplot))
+
     return d_calls
 
 
 # Wrapper for plot_model_performance_<target_type>
 def get_plotcalls_model_performance(y, yhat, target_type=None,
-                           n_bins=5, threshold=0.5, cmap="Blues", annotate=True, fontsize=10,
-                           ylim=None, regplot=False,
-                           l_plots=None,
-                           n_rows=2, n_cols=3, w=18, h=12, pdf_path=None):
+                                    n_bins=5, threshold=0.5, cmap="Blues", annotate=True, fontsize=10,
+                                    ylim=None, regplot=True,
+                                    l_plots=None,
+                                    n_rows=2, n_cols=3, w=18, h=12, pdf_path=None):
     # Derive target type
     if target_type is None:
         target_type = dict(continuous="REGR", binary="CLASS", multiclass="MULTICLASS")[type_of_target(y)]
-    
+
     # Plot
     if target_type == "CLASS":
-        d_calls = get_plot_model_performance_CLASS(y=y, yhat=yhat, 
-                                     n_bins=n_bins, threshold=threshold, cmap=cmap, annotate=annotate, 
-                                     fontsize=fontsize)
+        d_calls = get_plotcalls_model_performance_CLASS(
+            y=y, yhat=yhat, n_bins=n_bins, threshold=threshold, cmap=cmap, annotate=annotate, fontsize=fontsize)
     elif target_type == "REGR":
-        d_calls = get_plot_model_performance_REGR(y=y, yhat=yhat,
-                                    ylim=ylim, regplot=regplot, n_bins=n_bins)
+        d_calls = get_plotcalls_model_performance_REGR(y=y, yhat=yhat,
+                                                       ylim=ylim, regplot=regplot, n_bins=n_bins)
     elif target_type == "MULTICLASS":
         pass
         #plot_model_performance_MULTICLASS(y, yhat, n_bins, n_rows, n_cols, pdf_path)
@@ -543,14 +551,6 @@ def get_plotcalls_model_performance(y, yhat, target_type=None,
 
     # Filter plot dict
     if l_plots is not None:
-        l_calls = [d_calls[x] for x in l_plots]
-    else:
-        l_calls = list(d_calls.values())
+        d_calls = {x: d_calls[x] for x in l_plots}
 
-    # plot
-    #up.plot_function_calls(l_calls, n_rows=n_rows, n_cols=n_cols, figsize=(w, h), pdf_path=pdf_path)
-    
-
-
-
-
+    return d_calls

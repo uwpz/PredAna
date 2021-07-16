@@ -20,8 +20,8 @@ from sklearn.impute import SimpleImputer
 from sklearn.model_selection import KFold, ShuffleSplit, PredefinedSplit
 
 # Custom functions and classes
-#from tmp import my_utils as my
-import my_utils as my
+import up_utils as up
+import up_plots as up
 
 
 # --- Parameter --------------------------------------------------------------------------
@@ -30,11 +30,11 @@ import my_utils as my
 plot = True
 %matplotlib
 #%matplotlib qt / %matplotlib inline  # activate standard/inline window
-plt.ioff()  # / plt.ion()  # stop/start standard window
+#plt.ioff()  # / plt.ion()  # stop/start standard window
 #plt.plot(1, 1)
 
 # Specific parameters 
-TARGET_TYPES = ["REGR", "CLASS", "MULTICLASS"]
+TARGET_TYPES = ["REGR", "CLASS"]
 
 
 ########################################################################################################################
@@ -45,7 +45,7 @@ TARGET_TYPES = ["REGR", "CLASS", "MULTICLASS"]
 
 # Read and adapt
 
-df_orig = (pd.read_csv(my.dataloc + "hour.csv", parse_dates=["dteday"])
+df_orig = (pd.read_csv(up.dataloc + "hour.csv", parse_dates=["dteday"])
            .replace({"season": {1: "1_winter", 2: "2_spring", 3: "3_summer", 4: "4_fall"},
                      "yr": {0: "2011", 1: "2012"},
                      "holiday": {0: "No", 1: "Yes"},
@@ -75,7 +75,7 @@ df_orig["cnt_MULTICLASS"] = pd.qcut(df_orig["cnt"], q=[0, 0.8, 0.95, 1],
 # Check some stuff
 df_orig.dtypes
 df_orig.describe()
-my.value_counts(df_orig, dtypes=["object"]).T
+uu.value_counts(df_orig, dtypes=["object"]).T
 catname = "holiday"
 (df_orig[catname].value_counts().astype("int").iloc[: 5].reset_index()
                        .rename(columns={"index": catname, catname: "#"})).T
@@ -92,11 +92,11 @@ df = df_orig.copy()
 
 # --- Read metadata (Project specific) ---------------------------------------------------------------------------------
 
-df_meta = pd.read_excel(my.dataloc + "datamodel_bikeshare.xlsx", header=1, engine='openpyxl')
+df_meta = pd.read_excel(uu.dataloc + "datamodel_bikeshare.xlsx", header=1, engine='openpyxl')
 
 # Check
-print(my.diff(df.columns, df_meta["variable"]))
-print(my.diff(df_meta.query("category == 'orig'").variable, df.columns))
+print(uu.diff(df.columns, df_meta["variable"]))
+print(uu.diff(df_meta.query("category == 'orig'").variable, df.columns))
 
 # Filter on "ready"
 df_meta_sub = df_meta.query("status in ['ready']").reset_index()
@@ -107,7 +107,7 @@ df_meta_sub = df_meta.query("status in ['ready']").reset_index()
 df["day_of_month"] = df['dteday'].dt.day.astype("str").str.zfill(2)
 
 # Check again
-print(my.diff(df_meta_sub["variable"], df.columns))
+print(uu.diff(df_meta_sub["variable"], df.columns))
 
 
 # --- Define train/test/util-fold --------------------------------------------------------------------------------------
@@ -125,7 +125,7 @@ df["fold"] = np.where(df.index.isin(df.query("kaggle_fold == 'train'")
 
 # --- Define numeric covariates ----------------------------------------------------------------------------------------
 
-nume = df_meta_sub.loc[df_meta_sub["type"] == "nume", "variable"]
+nume = df_meta_sub.loc[df_meta_sub["type"] == "nume", "variable"].values
 df[nume] = df[nume].apply(lambda x: pd.to_numeric(x))
 df[nume].describe()
 
@@ -137,11 +137,24 @@ df[nume + "_BINNED"] = (df[nume].swifter.apply(lambda x: (pd.qcut(x, 5)))
 
 # Convert missings to own level ("(Missing)")
 df[nume + "_BINNED"] = df[nume + "_BINNED"].fillna("(Missing)")
-print(my.value_counts(df[nume + "_BINNED"], 6))
+print(uu.value_counts(df[nume + "_BINNED"], 6))
 
 # Get binned variables with just 1 bin (removed later)
 onebin = (nume + "_BINNED")[(df[nume + "_BINNED"].nunique() == 1).values]
 print(onebin)
+
+
+
+TARGET_TYPE = "CLASS"
+
+fig, ax = plt.subplots(1,1)
+#up.plot_bibar(ax, df["weathersit"].values, df["cnt_" + TARGET_TYPE].values,
+#                 xlabel="weather", ylabel="cnt")
+
+
+up.plot_CLASS_cate(ax, target=df["cnt_" + TARGET_TYPE], feature=df["weathersit"])
+
+
 
 
 # --- Missings + Outliers + Skewness -----------------------------------------------------------------------------------
@@ -150,7 +163,7 @@ print(onebin)
 misspct = df[nume].isnull().mean().round(3)  # missing percentage
 print("misspct:\n", misspct.sort_values(ascending=False))  # view in descending order
 remove = misspct[misspct > 0.95].index.values  # vars to remove
-nume = my.diff(nume, remove)  # adapt metadata
+nume = uu.diff(nume, remove)  # adapt metadata
 
 # Check for outliers and skewness
 df[nume].describe()
@@ -161,11 +174,11 @@ for TARGET_TYPE in TARGET_TYPES:
                                                                      show_regplot=True)
                             .plot(features=df[nume],
                                   target=df["cnt_" + TARGET_TYPE],
-                                  file_path=my.plotloc + "1__distr_nume_orig__" + TARGET_TYPE + ".pdf"))
+                                  file_path=uu.plotloc + "1__distr_nume_orig__" + TARGET_TYPE + ".pdf"))
     print(time.time() - start)
     
 # Winsorize (hint: plot again before deciding for log-trafo)
-df[nume] = my.Winsorize(lower_quantile=None, upper_quantile=0.99).fit_transform(df[nume])
+df[nume] = uu.Winsorize(lower_quantile=None, upper_quantile=0.99).fit_transform(df[nume])
 
 # Log-Transform
 tolog = np.array([], dtype="object")
@@ -182,9 +195,9 @@ for TARGET_TYPE in TARGET_TYPES:
     
     # Univariate variable performances
     varperf_nume = df[np.append(nume, nume + "_BINNED")].swifter.apply(lambda x: (
-        my.variable_performance(x, df["cnt_" + TARGET_TYPE],
+        uu.variable_performance(x, df["cnt_" + TARGET_TYPE],
                                 splitter=ShuffleSplit(n_splits=1, test_size=0.2, random_state=42),
-                                scorer=my.d_scoring[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" else "auc"])))
+                                scorer=uu.d_scoring[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" else "auc"])))
     print(varperf_nume.sort_values(ascending=False))
     
     # Plot
@@ -194,21 +207,21 @@ for TARGET_TYPE in TARGET_TYPES:
                             .plot(features=df[np.column_stack((nume, nume + "_BINNED")).ravel()],
                                   target=df["cnt_" + TARGET_TYPE],
                                   varimps=varperf_nume.round(2),
-                                  file_path=my.plotloc + "1__distr_nume__" + TARGET_TYPE + ".pdf"))
+                                  file_path=uu.plotloc + "1__distr_nume__" + TARGET_TYPE + ".pdf"))
 
 
 # --- Removing variables -----------------------------------------------------------------------------------------------
 
 # Remove leakage features
 remove = ["xxx", "xxx"]
-nume = my.diff(nume, remove)
+nume = uu.diff(nume, remove)
 
 # Remove highly/perfectly (>=98%) correlated (the ones with less NA!)
 df[nume].describe()
 corr_plot = (hms_plot.CorrelationPlotter(cutoff=0, w=8, h=6)
-             .plot(features=df[nume], file_path=my.plotloc + "1__corr_nume.pdf"))
+             .plot(features=df[nume], file_path=uu.plotloc + "1__corr_nume.pdf"))
 remove = ["atemp"]
-nume = my.diff(nume, remove)
+nume = uu.diff(nume, remove)
 
 
 # --- Time/fold depedency ----------------------------------------------------------------------------------------------
@@ -216,9 +229,9 @@ nume = my.diff(nume, remove)
 # Hint: In case of having a detailed date variable this can be used as regression target here as well!
 
 # Univariate variable importance (again ONLY for non-missing observations!)
-varperf_nume_fold = df[nume].swifter.apply(lambda x: my.variable_performance(x, df["fold"],
-                                                                             splitter=my.InSampleSplit(),
-                                                                             scorer=my.d_scoring["CLASS"]["auc"]))
+varperf_nume_fold = df[nume].swifter.apply(lambda x: uu.variable_performance(x, df["fold"],
+                                                                             splitter=uu.InSampleSplit(),
+                                                                             scorer=uu.d_scoring["CLASS"]["auc"]))
 
 
 # Plot: only variables with with highest importance
@@ -230,7 +243,7 @@ if len(nume_toprint):
                                     .plot(features=df[nume_toprint],
                                           target=df["fold"],
                                           varimps=varperf_nume_fold,
-                                          file_path=my.plotloc + "1__distr_nume_folddep.pdf"))
+                                          file_path=uu.plotloc + "1__distr_nume_folddep.pdf"))
 
 
 # --- Missing indicator and imputation (must be done at the end of all processing)--------------------------------------
@@ -271,7 +284,7 @@ yesno = np.concatenate([np.array(["holiday", "workingday"], dtype="object"), "MI
 df[yesno + "_ENCODED"] = df[yesno].apply(lambda x: x.map({"No": 0, "Yes": 1}))  # binary
 
 # Create target-encoded features for nominal variables
-nomi = my.diff(cate, np.concatenate([ordi, yesno]))
+nomi = uu.diff(cate, np.concatenate([ordi, yesno]))
 df_util = df.query("fold == 'util'").reset_index(drop=True)
 df[nomi + "_ENCODED"] = target_encoder.TargetEncoder().fit(df_util[nomi], df_util["cnt_REGR"]).transform(df[nomi])
 #df = df.query("fold != 'util'").reset_index(drop=True)  # remove utility data
@@ -282,9 +295,9 @@ levinfo = df[cate].nunique().sort_values(ascending=False)  # number of levels
 print(levinfo)
 toomany = levinfo[levinfo > topn_toomany].index.values
 print(toomany)
-toomany = my.diff(toomany, ["hr", "mnth", "weekday"])  # set exception for important variables
+toomany = uu.diff(toomany, ["hr", "mnth", "weekday"])  # set exception for important variables
 if len(toomany):
-    df[toomany] = my.Collapse(n_top=topn_toomany).fit_transform(df[toomany])
+    df[toomany] = uu.Collapse(n_top=topn_toomany).fit_transform(df[toomany])
 
 
 # --- Final variable information ---------------------------------------------------------------------------------------
@@ -292,12 +305,12 @@ if len(toomany):
 for TARGET_TYPE in TARGET_TYPES:
 
     # Univariate variable importance
-    #varperf_cate = my.variable_performance(df[np.append(cate, ["MISS_" + miss])], df["cnt_" + TARGET_TYPE],
+    #varperf_cate = uu.variable_performance(df[np.append(cate, ["MISS_" + miss])], df["cnt_" + TARGET_TYPE],
     #                                       ShuffleSplit(n_splits=1, test_size=0.2, random_state=42)).round(2)
     varperf_cate = df[np.append(cate, ["MISS_" + miss])].swifter.apply(lambda x: (
-        my.variable_performance(x, df["cnt_" + TARGET_TYPE],
+        uu.variable_performance(x, df["cnt_" + TARGET_TYPE],
                                 splitter=ShuffleSplit(n_splits=1, test_size=0.2, random_state=42),
-                                scorer=my.d_scoring[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" else "auc"])))
+                                scorer=uu.d_scoring[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" else "auc"])))
     print(varperf_cate.sort_values(ascending=False))
 
     # Check
@@ -306,19 +319,19 @@ for TARGET_TYPE in TARGET_TYPES:
                             .plot(features=df[np.append(cate, ["MISS_" + miss])],
                                   target=df["cnt_" + TARGET_TYPE],
                                   varimps=varperf_cate.round(2),
-                                  file_path=my.plotloc + "1__distr_cate__" + TARGET_TYPE + ".pdf"))
+                                  file_path=uu.plotloc + "1__distr_cate__" + TARGET_TYPE + ".pdf"))
 
 
 # --- Removing variables -----------------------------------------------------------------------------------------------
 
 # Remove leakage variables
-cate = my.diff(cate, ["xxx"])
-toomany = my.diff(toomany, ["xxx"])
+cate = uu.diff(cate, ["xxx"])
+toomany = uu.diff(toomany, ["xxx"])
 
 # Remove highly/perfectly (>=99%) correlated (the ones with less levels!)
 corr_cate_plot = (hms_plot.CorrelationPlotter(cutoff=0, w=8, h=6)
                   .plot(features=df[np.append(cate, ["MISS_" + miss])],
-                        file_path=my.plotloc + "1__corr_cate.pdf"))
+                        file_path=uu.plotloc + "1__corr_cate.pdf"))
 
 
 # --- Time/fold depedency ----------------------------------------------------------------------------------------------
@@ -326,9 +339,9 @@ corr_cate_plot = (hms_plot.CorrelationPlotter(cutoff=0, w=8, h=6)
 # Hint: In case of having a detailed date variable this can be used as regression target here as well!
 # Univariate variable importance (again ONLY for non-missing observations!)
 varperf_cate_fold = df[np.append(cate, ["MISS_" + miss])].swifter.apply(lambda x: (
-    my.variable_performance(x, df["fold"],
-                            splitter=my.InSampleSplit(),
-                            scorer=my.d_scoring["CLASS"]["auc"])))
+    uu.variable_performance(x, df["fold"],
+                            splitter=uu.InSampleSplit(),
+                            scorer=uu.d_scoring["CLASS"]["auc"])))
 
 # Plot: only variables with with highest importance
 cate_toprint = varperf_cate_fold[varperf_cate_fold > 0.52].index.values
@@ -338,7 +351,7 @@ if len(nume_toprint):
                                     .plot(features=df[cate_toprint],
                                           target=df["fold"],
                                           varimps=varperf_cate_fold,
-                                          file_path=my.plotloc + "1__distr_cate_folddep.pdf"))
+                                          file_path=uu.plotloc + "1__distr_cate_folddep.pdf"))
 
 
 
@@ -359,15 +372,15 @@ nume_standard = np.append(nume, toomany + "_ENCODED")
 cate_standard = np.append(cate, "MISS_" + miss)
 
 # Binned: for Lasso
-cate_binned = np.append(my.diff(nume + "_BINNED", onebin), cate)
+cate_binned = np.append(uu.diff(nume + "_BINNED", onebin), cate)
 
 # Encoded: for Lightgbm or DeepLearning
 nume_encoded = np.concatenate([nume, cate + "_ENCODED", "MISS_" + miss + "_ENCODED"])
 
 # Check
 all_features = np.unique(np.concatenate([nume_standard, cate_standard, cate_binned, nume_encoded]))
-my.diff(all_features, df.columns.values.tolist())
-my.diff(df.columns.values.tolist(), all_features)
+uu.diff(all_features, df.columns.values.tolist())
+uu.diff(df.columns.values.tolist(), all_features)
 
 
 # --- Remove burned data -----------------------------------------------------------------------------------------------
@@ -382,7 +395,7 @@ plt.close(fig="all")  # plt.close(plt.gcf())
 del df_orig
 
 # Serialize
-with open(my.dataloc + "1_explore.pkl", "wb") as file:
+with open(uu.dataloc + "1_explore.pkl", "wb") as file:
     pickle.dump({"df": df,
                  "nume_standard": nume_standard,
                  "cate_standard": cate_standard,
