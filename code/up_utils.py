@@ -18,7 +18,7 @@ import time
 from sklearn.metrics import make_scorer, roc_auc_score, accuracy_score, roc_curve
 from sklearn.model_selection import cross_val_score, GridSearchCV, check_cv, KFold
 from sklearn.linear_model import LinearRegression, LogisticRegression
-from sklearn.preprocessing import OneHotEncoder, KBinsDiscretizer
+from sklearn.preprocessing import OneHotEncoder, KBinsDiscretizer, MinMaxScaler
 from sklearn.utils.multiclass import type_of_target, unique_labels
 from sklearn.utils import _safe_indexing
 from sklearn.base import BaseEstimator, TransformerMixin, clone  # ClassifierMixin
@@ -133,10 +133,18 @@ def plot_function_calls(l_calls, n_rows=2, n_cols=3, figsize=(18, 12), pdf_path=
 # Regr
 
 def spear(y_true, y_pred):
+    # Also for classification
+    if y_pred.ndim == 2:
+        if y_pred.shape[1] == 2:
+            y_pred = y_pred[:, 1]
     return pd.DataFrame({"y_true": y_true, "y_pred": y_pred}).corr(method="spearman").values[0, 1]
 
 
 def pear(y_true, y_pred):
+    # Also for classification
+    if y_pred.ndim == 2:
+        if y_pred.shape[1] == 2:
+            y_pred = y_pred[:, 1]
     return pd.DataFrame({"y_true": y_true, "y_pred": y_pred}).corr(method="pearson").values[0, 1]
 
 
@@ -161,6 +169,15 @@ def auc(y_true, y_pred):
     if y_pred.ndim == 2:
         if y_pred.shape[1] == 2:
             y_pred = y_pred[:, 1]
+            
+    # Also for regression
+    if y_pred.ndim == 1:
+        if (np.min(y_pred) < 0) | (np.max(y_pred) > 1):
+            y_pred = MinMaxScaler().fit_transform(y_pred.reshape(-1, 1))[:, 0]
+    if y_true.ndim == 1:
+        if np.max(y_true) > 1:
+            y_true = np.where(y_true>1, 1, np.where(y_true<1, 0, y_true))
+ 
     return roc_auc_score(y_true, y_pred, multi_class="ovr")
 
 
@@ -197,7 +214,7 @@ def value_counts(df, topn=5, dtypes=["object"]):
 
 
 # Univariate model performance
-def variable_performance(feature, target, scorer, splitter=KFold(5), groups=None):
+def variable_performance(feature, target, scorer, target_type=None, splitter=KFold(5), groups=None):
 
     # Drop all missings
     df_hlp = pd.DataFrame().assign(feature=feature, target=target)
@@ -206,8 +223,9 @@ def variable_performance(feature, target, scorer, splitter=KFold(5), groups=None
     df_hlp = df_hlp.dropna().reset_index(drop=True)
     
     # Detect types
-    target_type = dict(continuous="REGR", binary="CLASS", 
-                       multiclass="MULTICLASS")[type_of_target(df_hlp["target"])]
+    if target_type is None:
+        target_type = dict(continuous="REGR", binary="CLASS", 
+                           multiclass="MULTICLASS")[type_of_target(df_hlp["target"])]
     numeric_feature = pd.api.types.is_numeric_dtype(df_hlp["feature"])
     
     # Calc performance
@@ -509,6 +527,22 @@ class ScalingEstimator(BaseEstimator):
         return yhat
 
 
+# Metaestimator for log-transformed target
+class LogtrafoEstimator(BaseEstimator):
+    def __init__(self, estimator=None):
+        self.estimator = estimator
+        self._varest = None
+        self._estimator_type = estimator._estimator_type
+
+    def fit(self, X, y, *args, **kwargs):
+        self.estimator.fit(X, np.log(1 + y), *args, **kwargs)
+        self._varest = np.var(self.estimator.predict(X) - np.log(1 + y))
+        return self
+
+    def predict(self, X, *args, **kwargs):
+        return (np.exp(self.estimator.predict(X, *args, **kwargs) + self._varest / 2) - 1)
+
+
 # Alternative to above with explicit classifier
 class XGBClassifier_rescale(xgb.XGBClassifier):
     def __init__(self, b_sample=None, b_all=None, **kwargs):
@@ -533,10 +567,12 @@ def varimp2df(varimp, features):
 
 
 # Dataframe based permutation importance which can select a subset of features for which to calculate VI
-def variable_importance(estimator, df, y, features, scoring=None, n_jobs=None, random_state=None, **_):
+def variable_importance(estimator, df, y, features, target_type=None, scoring=None, 
+                        n_jobs=None, random_state=None, **_):
 
     # Original performance
-    target_type = dict(continuous="REGR", binary="CLASS", multiclass="MULTICLASS")[type_of_target(y)]
+    if target_type is None:
+        target_type = dict(continuous="REGR", binary="CLASS", multiclass="MULTICLASS")[type_of_target(y)]
     yhat = estimator.predict(df) if target_type == "REGR" else estimator.predict_proba(df)
     score_orig = scoring._score_func(y, yhat)
 

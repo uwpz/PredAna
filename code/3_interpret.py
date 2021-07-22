@@ -64,6 +64,39 @@ xgb_param = dict(n_estimators=1100, learning_rate=0.01,
                  verbosity=0,
                  n_jobs=uu.n_jobs)
 
+'''
+var = "season"
+df_plot = df[[var, target_name]].pivot(columns=var, values=target_name)
+df_plot.columns
+
+fig, ax = plt.subplots(1, 1)
+values = df[var].unique()
+color = uu.colorblind[1]
+_ = plt.boxplot([df[target_name][df[var] == x] for x in values], labels=values, vert=False, widths=0.8,
+                patch_artist=True,
+                showmeans=True,
+                boxprops=dict(facecolor=color, alpha=0.5),
+                #capprops=dict(color=color),
+                #whiskerprops=dict(color=color),
+                medianprops=dict(color="black"),
+                meanprops=dict(marker="x",
+                               markeredgecolor="black"),
+                flierprops=dict(marker="."))
+
+fig, ax = plt.subplots(1, 1)
+up.plot_bibar(ax, df["season"], df["cnt_CLASS_num"])
+
+up.helper_calc_barboxwidth(df["season"], df.assign(dummy=1)["dummy"])
+min_width=0.2
+df_hlp = pd.crosstab(df["season"], df.assign(dummy=1)["dummy"])
+    df_barboxwidth = (df_hlp.div(df_hlp.sum(axis=1), axis=0)
+               .assign(w=df_hlp.sum(axis=1))
+               .reset_index()
+               .assign(pct=lambda x: 100 * x["w"] / df_hlp.values.sum())
+               .assign(w=lambda x: 0.9 * x["w"] / x["w"].max())
+               .assign(x_fmt=lambda x: x["season"] + x["pct"].map(" ({:,.1f} %)".format))
+               .assign(w=lambda x: np.where(x["w"] < min_width, min_width, x["w"])))
+'''
 
 ########################################################################################################################
 # Prepare

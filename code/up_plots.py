@@ -205,15 +205,15 @@ def plot_biscatter(ax, x, y, xlabel=None, ylabel=None,
         inset_ax_over.get_yaxis().set_visible(False)
 
 
-def helper_calc_barboxwidth(x, y, minwidth=0.2):
+def helper_calc_barboxwidth(x, y, min_width=0.2):
     df_hlp = pd.crosstab(x, y)
     df_barboxwidth = (df_hlp.div(df_hlp.sum(axis=1), axis=0)
                .assign(w=df_hlp.sum(axis=1))
                .reset_index()
-               .assign(pct=lambda x: 100 * x["w"] / df_hlp.values.sum())
-               .assign(w=lambda x: 0.9 * x["w"] / x["w"].max())
-               .assign(x_fmt=lambda x: x["x"] + x["pct"].map("( {:,.1f} %)".format))
-               .assign(w=lambda x: np.where(x["w"] < min_width, min_width, x["w"])))
+               .assign(pct=lambda z: 100 * z["w"] / df_hlp.values.sum())
+               .assign(w=lambda z: 0.9 * z["w"] / z["w"].max())
+               .assign(x_fmt=lambda z: z["x"] + z["pct"].map("( {:,.1f} %)".format))
+               .assign(w=lambda z: np.where(z["w"] < min_width, min_width, z["w"])))
     return df_barboxwidth
 
 
@@ -243,7 +243,7 @@ def plot_bibar(ax, x, y, xlabel=None, ylabel=None, label_yes=None,
         title = xlabel
 
     # Prepare data
-    df_plot = df_barboxwidth(x, y, minwidth=minwidth)
+    df_plot = helper_calc_barboxwidth(x, y, min_width=min_width)
 
     # Barplot
     ax_act.barh(df_plot["x_fmt"], df_plot[label_yes], height=df_plot["w"],
@@ -267,6 +267,28 @@ def plot_bibar(ax, x, y, xlabel=None, ylabel=None, label_yes=None,
     inset_ax.barh(df_plot["x_fmt"], df_plot.w,
                   color="lightgrey", edgecolor="black", linewidth=1)
 
+'''
+var = "season"
+df_plot = df[[var, target_name]].pivot(columns=var, values=target_name)
+df_plot.columns
+
+fig, ax = plt.subplots(1, 1)
+values = df[var].unique()
+color = uu.colorblind[1]
+_ = plt.boxplot([df[target_name][df[var] == x] for x in values], labels=values, vert=False, widths=0.8,
+                patch_artist=True,
+                showmeans=True,
+                boxprops=dict(facecolor=color, alpha=0.5),
+                #capprops=dict(color=color),
+                #whiskerprops=dict(color=color),
+                medianprops=dict(color="black"),
+                meanprops=dict(marker="x",
+                               markeredgecolor="black"),
+                flierprops=dict(marker="."))
+
+fig, ax = plt.subplots(1, 1)
+up.plot_bibar(ax, df["season"], df["cnt_CLASS_num"])
+'''
 
 ########################################################################################################################
 # Exploration plots
@@ -327,10 +349,12 @@ def plot_roc(ax, y, yhat):
     ax_act = ax
 
     # also for regression
-    if np.max(y) > 1:
-        y = y / np.max(y)
-    if np.max(yhat) > 1:
-        yhat = yhat / np.max(yhat)
+    if y.ndim == 1:
+        if (np.min(y) < 0) | (np.max(y) > 1):
+            y = MinMaxScaler().fit_transform(y.reshape(-1, 1))[:, 0]
+    if yhat.ndim == 1:
+        if (np.min(yhat) < 0) | (np.max(yhat) > 1):
+            yhat = MinMaxScaler().fit_transform(yhat.reshape(-1, 1))[:, 0]
 
     # Roc curve
     fpr, tpr, cutoff = roc_curve(y, yhat)
@@ -366,9 +390,14 @@ def plot_calibration(ax, y, yhat, n_bins=5):
     _ = ax_act.set(**props)
 
     # Add diagonal line
-    minmin = min(np.min(y), np.min(yhat))
-    maxmax = max(np.max(y), np.max(yhat))
+    minmin = min(df_plot["y"].min(), df_plot["yhat"].min())
+    maxmax = max(df_plot["y"].max(), df_plot["yhat"].max())
     ax_act.plot([minmin, maxmax], [minmin, maxmax], linestyle="--", color="grey")
+    
+    # Focus
+    #yhat_max = df_plot["yhat"].max()
+    #ax_act.set_xlim(None, yhat_max)
+    #ax_act.set_ylim(None, yhat_max)
 
 
 # PLot confusion matrix
@@ -516,7 +545,9 @@ def get_plotcalls_model_performance_REGR(y, yhat,
                                                                     xlim=ylim,
                                                                     regplot=regplot))
 
-    d_calls["relative_residuals_vs_fitted"] = (plot_biscatter, dict(x=yhat, y=abs(y - yhat) / abs(y),
+    d_calls["relative_residuals_vs_fitted"] = (plot_biscatter, dict(x=yhat, 
+                                                                    y=np.where(y == 0, np.nan, 
+                                                                               abs(y - yhat) / abs(y)),
                                                                     xlabel=r"$\^y$",
                                                                     ylabel=r"|y-$\^y$|/|y|",
                                                                     title="Relative Residuals vs. Fitted",
