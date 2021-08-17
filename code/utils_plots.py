@@ -6,7 +6,6 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.backends.backend_pdf import PdfPages
 import seaborn as sns
@@ -33,19 +32,8 @@ from itertools import product  # for GridSearchCV_xlgb
 
 # Other
 from scipy.interpolate import splev, splrep
-
-
-########################################################################################################################
-# Parameter
-########################################################################################################################
-
-# Colors
-twocol = ["red", "green"]
-threecol = ["green", "yellow", "red"]
-manycol = np.delete(np.array(list(mcolors.BASE_COLORS.values()) + list(mcolors.CSS4_COLORS.values()), dtype=object),
-                    np.array([4, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 26]))
-colorblind = sns.color_palette("colorblind", as_cmap=True)
-# sel = np.arange(50); fig, ax = plt.subplots(figsize=(5,15)); ax.barh(sel.astype("str"), 1, color=manycol[sel])
+from scipy.cluster.hierarchy import linkage
+from pycorrcat.pycorrcat import corr as corrcat
 
 
 ########################################################################################################################
@@ -58,8 +46,8 @@ def debugtest(a=1, b=2):
     print(a)
     print(b)
     print("blub")
-    #print("blub2")
-    #print("blub3")
+    # print("blub2")
+    # print("blub3")
     print(1)
     print(2)
     return "done"
@@ -84,13 +72,10 @@ def show_figure(fig):
     new_manager = dummy.canvas.manager
     new_manager.canvas.figure = fig
     fig.set_canvas(new_manager.canvas)
-    
+
 
 # Plot list of tuples (plot_call, kwargs)
-def plot_function_calls(l_calls, n_rows=2, n_cols=3, figsize=(18, 12), pdf_path=None):
-    
-    # TODO: return fig-list
-    # TODO: l_calls -> calls can be list or dict
+def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None):
 
     # Open pdf
     if pdf_path is not None:
@@ -98,15 +83,19 @@ def plot_function_calls(l_calls, n_rows=2, n_cols=3, figsize=(18, 12), pdf_path=
     else:
         pdf_pages = None
 
+    l_fig = list()
     for i, (plot_func, kwargs) in enumerate(l_calls):
         # Init new page
         if i % (n_rows * n_cols) == 0:
-            fig, ax = plt.subplots(n_rows, n_cols, figsize=figsize)
+            fig, ax = plt.subplots(n_rows, n_cols, figsize=figsize, constrained_layout=True)
+            l_fig.append([(fig, ax)])
             i_ax = 0
 
         # Plot call
         plot_func(ax=ax.flat[i_ax] if (n_rows * n_cols > 1) else ax, **kwargs)
-        fig.tight_layout()
+        # fig.tight_layout()
+        fig.set_constrained_layout_pads(w_pad=4 / 72, h_pad=4 / 72, hspace=0.1,
+                                        wspace=0.1)
         i_ax += 1
 
         # "Close" page
@@ -118,11 +107,13 @@ def plot_function_calls(l_calls, n_rows=2, n_cols=3, figsize=(18, 12), pdf_path=
 
             # Write pdf
             if pdf_path is not None:
-                pdf_pages.savefig(fig)
+                pdf_pages.savefig(fig, bbox_inches="tight", pad_inches=0.2)
 
     # Close pdf
     if pdf_path is not None:
         pdf_pages.close()
+
+    return l_fig
 
 
 # --- Metrics ----------------------------------------------------------------------------------------
@@ -156,7 +147,7 @@ def ame(y_true, y_pred):
 def mae(y_true, y_pred):
     return np.mean(np.abs(y_true - y_pred))
 
-#def myrmse(y_true, y_pred):
+# def myrmse(y_true, y_pred):
 #    return np.sqrt(np.mean(np.power(y_true + 0.03 - y_pred, 2)))
 
 
@@ -166,15 +157,16 @@ def auc(y_true, y_pred):
     if y_pred.ndim == 2:
         if y_pred.shape[1] == 2:
             y_pred = y_pred[:, 1]
-            
+
     # Also for regression
     if y_pred.ndim == 1:
         if (np.min(y_pred) < 0) | (np.max(y_pred) > 1):
             y_pred = MinMaxScaler().fit_transform(y_pred.reshape(-1, 1))[:, 0]
     if y_true.ndim == 1:
-        if np.max(y_true) > 1:
-            y_true = np.where(y_true>1, 1, np.where(y_true<1, 0, y_true))
- 
+        if pd.api.types.is_numeric_dtype(y_true):
+            if np.max(y_true) > 1:
+                y_true = np.where(y_true > 1, 1, np.where(y_true < 1, 0, y_true))
+
     return roc_auc_score(y_true, y_pred, multi_class="ovr")
 
 
@@ -220,24 +212,24 @@ def variable_performance(feature, target, scorer, target_type=None, splitter=KFo
     if groups is not None:
         df_hlp["groups_for_split"] = groups
     df_hlp = df_hlp.dropna().reset_index(drop=True)
-    
+
     # Detect types
     if target_type is None:
-        target_type = dict(continuous="REGR", binary="CLASS", 
+        target_type = dict(continuous="REGR", binary="CLASS",
                            multiclass="MULTICLASS")[type_of_target(df_hlp["target"])]
     numeric_feature = pd.api.types.is_numeric_dtype(df_hlp["feature"])
-    
+
     # Calc performance
     perf = np.mean(cross_val_score(
         estimator=(LinearRegression() if target_type == "REGR" else LogisticRegression()),
-        X=(KBinsDiscretizer().fit_transform(df_hlp[["feature"]]) if numeric_feature else 
+        X=(KBinsDiscretizer().fit_transform(df_hlp[["feature"]]) if numeric_feature else
            OneHotEncoder().fit_transform(df_hlp[["feature"]])),
         y=df_hlp["target"],
         cv=splitter.split(df_hlp, groups=df_hlp["groups_for_split"] if groups is not None else None),
         scoring=scorer))
-    
+
     return perf
-    
+
 
 # Winsorize
 class Winsorize(BaseEstimator, TransformerMixin):
@@ -262,13 +254,13 @@ class Winsorize(BaseEstimator, TransformerMixin):
         if (self.lower_quantile is not None) or (self.upper_quantile is not None):
             X = np.clip(X, a_min=self.a_lower_, a_max=self.a_upper_)
         return X
-    
+
 
 # Map Non-topn frequent members of a string column to "other" label
 class Collapse(BaseEstimator, TransformerMixin):
     def __init__(self, n_top=10, other_label="_OTHER_"):
         self.n_top = n_top
-        self.other_label = other_label      
+        self.other_label = other_label
 
     def fit(self, X, *_):
         self.d_top_ = pd.DataFrame(X).apply(lambda x: x.value_counts().index.values[:self.n_top])
@@ -277,8 +269,8 @@ class Collapse(BaseEstimator, TransformerMixin):
     def transform(self, X):
         X = pd.DataFrame(X).apply(lambda x: x.where(np.in1d(x, self.d_top_[x.name]),
                                                     other=self.other_label)).values
-        return X 
-    
+        return X
+
 
 # Impute Mode (simpleimputer is too slow)
 class ImputeMode(BaseEstimator, TransformerMixin):
@@ -292,8 +284,8 @@ class ImputeMode(BaseEstimator, TransformerMixin):
     def transform(self, X):
         X = pd.DataFrame(X).fillna(self.impute_values_).values
         return X
-  
-  
+
+
 # --- Plots --------------------------------------------------------------------------
 
 def helper_calc_barboxwidth(feature, target, min_width=0.2):
@@ -309,46 +301,91 @@ def helper_calc_barboxwidth(feature, target, min_width=0.2):
     return df_barboxwidth
 
 
-def helper_adapt_feature_target(feature, target, feature_label, target_label):
+def helper_adapt_feature_target(feature, target, feature_name, target_name):
     # Convert to Series and adapt labels
     if not isinstance(feature, pd.Series):
         feature = pd.Series(feature)
-        feature.name = feature_label if feature_label is not None else "x"
+        feature.name = feature_name if feature_name is not None else "x"
     if not isinstance(target, pd.Series):
         target = pd.Series(target)
-        target.name = target_label if target_label is not None else "y"
-    return (feature, target)
+        target.name = target_name if target_name is not None else "y"
+
+    print("Plotting " + feature.name + " vs. " + target.name)
+
+    # Remove missings
+    mask_target_miss = target.isna()
+    n_target_miss = mask_target_miss.sum()
+    if n_target_miss:
+        target = target[~mask_target_miss]
+        feature = feature[~mask_target_miss]
+        print("ATTENTION: " + str(n_target_miss) + " records removed due to missing target!")
+        mask_target_miss = target.notna()
+    mask_feature_miss = feature.isna()
+    n_feature_miss = mask_feature_miss.sum()
+    pct_miss_feature = 100 * n_feature_miss / len(feature)
+    if n_feature_miss:
+        target = target[~mask_feature_miss]
+        feature = feature[~mask_feature_miss]
+        #warnings.warn(str(n_feature_miss) + " records removed due to missing feature!")
+
+    return (feature, target, pct_miss_feature)
 
 
-def helper_inner_barplot(ax, x, y, inset_size=0.2): 
+def helper_inner_barplot(ax, x, y, inset_size=0.2):
+    # Memorize ticks and limits
     xticks = ax.get_xticks()
     xlim = ax.get_xlim()
-    ax.set_xlim(xlim[0] - 1.5 * inset_size * (xlim[1] - xlim[0]))
-    inset_ax = ax.inset_axes([0, 0, inset_size, 1], zorder=10)
-    inset_ax.set_axis_off()
-    ax.axvline(xlim[0], color="black")
+
+    # Create space
+    ax.set_xlim(xlim[0] - 1.2 * inset_size * (xlim[1] - xlim[0]), xlim[1])
+
+    # Create shared inset axis
+    inset_ax = ax.inset_axes([0, 0, inset_size, 1])
+    # inset_ax.get_xaxis().set_visible(False)
+    # inset_ax.get_yaxis().set_visible(False)
+    inset_ax.set_xticklabels([])
+    inset_ax.set_yticklabels([])
     ax.get_shared_y_axes().join(ax, inset_ax)
+
+    # Plot
     inset_ax.barh(x, y,
                   color="lightgrey", edgecolor="black", linewidth=1)
-    _ = ax.set_xticks(xticks[xticks > xlim[0]])
+
+    # More space for plot
+    left, right = inset_ax.get_xlim()
+    inset_ax.set_xlim(left, right * 1.2)
+
+    # Border
+    inset_ax.axvline(inset_ax.get_xlim()[1], color="black")
+
+    # Remove senseless ticks
+    yticks = inset_ax.get_yticks()
+    if len(yticks) > len(x):
+        _ = inset_ax.set_yticks(yticks[1::2])
+    _ = ax.set_xticks(xticks[(xticks >= xlim[0]) & (xticks <= xlim[1])])
 
 
 def plot_cate_CLASS(ax,
                     feature, target,
-                    feature_label=None, target_label=None, target_category=None,
+                    feature_name=None, target_name=None,
+                    target_category=None,
                     target_lim=None,
                     min_width=0.2, inset_size=0.2, refline=True,
-                    title=None, varimp=None, varimp_fmt="0.2f",
-                    color=colorblind[1]):
+                    title=None,
+                    add_miss_info=True,
+                    color=list(sns.color_palette("colorblind").as_hex()),
+                    **_):
 
     # Adapt feature and target
-    feature, target = helper_adapt_feature_target(feature, target, feature_label, target_label)
+    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name)
+
+    # Adapt color
+    if isinstance(color, list):
+        color = color[1]
 
     # Add title
     if title is None:
         title = feature.name
-    #if varimp is not None:
-    #    title = title + " (VI: " + format(varimp, varimp_fmt) + ")"
 
     # Get "1" class
     if target_category is None:
@@ -372,21 +409,71 @@ def plot_cate_CLASS(ax,
     # Inner barplot
     helper_inner_barplot(ax, x=df_plot[feature.name + "_fmt"], y=df_plot["pct"], inset_size=inset_size)
 
+    # Missing information
+    if add_miss_info:
+        ax.set_ylabel(feature.name)
+        ax.set_ylabel(ax.get_ylabel() + " (" + format(pct_miss_feature, "0.1f") + "% NA)")
 
-def plot_cate_REGR(ax, feature, target, feature_label=None, target_label=None,
-                   target_lim=None,
-                   min_width=0.2, inset_size=0.2, refline=True,
-                   title=None, varimp=None, varimp_fmt="0.2f",
-                   color=colorblind[1]):
+
+def plot_cate_MULTICLASS(ax,
+                         feature, target,
+                         feature_name=None, target_name=None,
+                         target_category=None,
+                         target_lim=None,
+                         min_width=0.2, inset_size=0.2, refline=True,
+                         title=None,
+                         add_miss_info=True,
+                         color=list(sns.color_palette("colorblind").as_hex()),
+                         **_):
 
     # Adapt feature and target
-    feature, target = helper_adapt_feature_target(feature, target, feature_label, target_label)
+    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name)
 
     # Add title
     if title is None:
         title = feature.name
-    #if varimp is not None:
-    #    title = title + " (VI: " + format(varimp, varimp_fmt) + ")"
+
+    # Prepare data
+    df_plot = helper_calc_barboxwidth(feature, target, min_width=min_width)
+
+    # Segmented barplot
+    offset = np.zeros(len(df_plot))
+    for m, member in enumerate(np.sort(target.unique())):
+        ax.barh(df_plot[feature.name + "_fmt"], df_plot[member], height=df_plot["w"],
+                left=offset,
+                color=color[m], label=member, edgecolor="black", alpha=0.5, linewidth=1)
+        offset = offset + df_plot[member].values
+        ax.legend(title=target.name, loc="center left", bbox_to_anchor=(1, 0.5))
+
+    # Inner barplot
+    helper_inner_barplot(ax, x=df_plot[feature.name + "_fmt"], y=df_plot["pct"], inset_size=inset_size)
+
+    # Missing information
+    if add_miss_info:
+        ax.set_ylabel(feature.name)
+        ax.set_ylabel(ax.get_ylabel() + " (" + format(pct_miss_feature, "0.1f") + "% NA)")
+
+
+def plot_cate_REGR(ax,
+                   feature, target,
+                   feature_name=None, target_name=None,
+                   target_lim=None,
+                   min_width=0.2, inset_size=0.2, refline=True,
+                   title=None,
+                   add_miss_info=True,
+                   color=list(sns.color_palette("colorblind").as_hex()),
+                   **_):
+
+    # Adapt feature and target
+    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name)
+
+    # Adapt color
+    if isinstance(color, list):
+        color = color[0]
+
+    # Add title
+    if title is None:
+        title = feature.name
 
     # Prepare data
     df_plot = helper_calc_barboxwidth(feature, np.tile("dummy", len(feature)),
@@ -399,9 +486,7 @@ def plot_cate_REGR(ax, feature, target, feature_label=None, target_label=None,
                    vert=False,
                    patch_artist=True,
                    showmeans=True,
-                   boxprops=dict(facecolor=color, alpha=0.5),
-                   #capprops=dict(color=color),
-                   #whiskerprops=dict(color=color),
+                   boxprops=dict(facecolor=color, alpha=0.5, color="black"),
                    medianprops=dict(color="black"),
                    meanprops=dict(marker="x",
                                   markeredgecolor="black"),
@@ -414,39 +499,42 @@ def plot_cate_REGR(ax, feature, target, feature_label=None, target_label=None,
     # Refline
     if refline:
         ax.axvline(target.mean(), ls="dotted", color="black")
- 
+
     # Inner barplot
-    helper_inner_barplot(ax, x=np.arange(len(df_plot)) + 1, y=df_plot["pct"], 
-                         inset_size=inset_size)    
-    
-def plot_nume_CLASS(ax, 
-                    feature, target, 
-                    feature_label=None, target_label=None, target_category=None,
-                    feature_lim=None, 
-                    n_bins=20, 
+    helper_inner_barplot(ax, x=np.arange(len(df_plot)) + 1, y=df_plot["pct"],
+                         inset_size=inset_size)
+
+    # Missing information
+    if add_miss_info:
+        ax.set_ylabel(feature.name)
+        ax.set_ylabel(ax.get_ylabel() + " (" + format(pct_miss_feature, "0.1f") + "% NA)")
+
+
+def plot_nume_CLASS(ax,
+                    feature, target,
+                    feature_name=None, target_name=None,
+                    feature_lim=None,
+                    inset_size=0.2, n_bins=20,
                     title=None,
-                    color=colorblind,
-                    inset_size=0.2):
-    
+                    add_miss_info=True,
+                    color=list(sns.color_palette("colorblind").as_hex()),
+                    **_):
+
     # Adapt feature and target
-    feature, target = helper_adapt_feature_target(feature, target, feature_label, target_label)
+    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name)
 
     # Add title
     if title is None:
         title = feature.name
-    #if varimp is not None:
-    #    title = title + " (VI: " + format(varimp, varimp_fmt) + ")"
-    
+
     # Adapt color
     color = color[:target.nunique()]
 
     # Distribution plot
-    sns.histplot(ax=ax, x=feature, hue=target, stat="density", common_norm=False, kde=True, bins=n_bins, 
+    sns.histplot(ax=ax, x=feature, hue=target, stat="density", common_norm=False, kde=True, bins=n_bins,
                  palette=color)
     ax.set_ylabel("Density")
     ax.set_title(title)
-    if feature_lim is not None:
-        ax.set_xlim(feature_lim)
 
     # Inner Boxplot
     yticks = ax.get_yticks()
@@ -458,25 +546,53 @@ def plot_nume_CLASS(ax,
     ax.get_shared_x_axes().join(ax, inset_ax)
     sns.boxplot(ax=inset_ax, x=feature, y=target, orient="h", palette=color,
                 showmeans=True, meanprops={"marker": "x", "markerfacecolor": "black", "markeredgecolor": "black"})
-    _ = ax.set_yticks(yticks[yticks > ylim[0]])
+    _ = ax.set_yticks(yticks[(yticks >= ylim[0]) & (yticks <= ylim[1])])
+
+    # Add missing information
+    if add_miss_info:
+        ax.set_xlabel(ax.get_xlabel() + " (" + format(pct_miss_feature, "0.1f") + "% NA)")
+
+    # Set feature_lim (must be after inner plot)
+    if feature_lim is not None:
+        ax.set_xlim(feature_lim)
+
+
+def plot_nume_MULTICLASS(ax,
+                         feature, target,
+                         feature_name=None, target_name=None,
+                         feature_lim=None,
+                         inset_size=0.2, n_bins=20,
+                         title=None,
+                         add_miss_info=True,
+                         color=list(sns.color_palette("colorblind").as_hex()),
+                         **_):
+
+    plot_nume_CLASS(ax=ax, feature=feature, target=target,
+                    feature_name=feature_name, target_name=target_name,
+                    feature_lim=feature_lim,
+                    inset_size=inset_size, n_bins=n_bins,
+                    title=title, add_miss_info=add_miss_info,
+                    color=color, **_)
 
 
 # Scatterplot as heatmap
-def plot_nume_REGR(ax,  
+def plot_nume_REGR(ax,
                    feature, target,
-                   feature_label=None, target_label=None,
+                   feature_name=None, target_name=None,
                    feature_lim=None, target_lim=None,
-                   regplot=False, smooth=0.5,    
-                   refline=True,               
+                   regplot=True, smooth=0.5,
+                   refline=True,
                    title=None,
+                   add_miss_info=True,
                    add_colorbar=True,
                    inset_size=0.2,
-                   add_y_density=True, add_x_density=True, n_bins=20, add_boxplot=True,                  
-                   color=LinearSegmentedColormap.from_list("bl_yl_rd", ["blue", "yellow", "red"])):
+                   add_feature_distribution=True, add_target_distribution=True, n_bins=20, add_boxplot=True,
+                   colormap=LinearSegmentedColormap.from_list("bl_yl_rd", ["blue", "yellow", "red"]),
+                   **_):
 
     # Adapt feature and target
-    feature, target = helper_adapt_feature_target(feature, target, feature_label, target_label)
-        
+    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name)
+
     # Add title
     if title is None:
         title = feature.name
@@ -494,7 +610,9 @@ def plot_nume_REGR(ax,
 
     # Heatmap
     #p = ax.hexbin(feature, target, gridsize=(int(50 * heat_scale), 50), mincnt=1, cmap=color)
-    p = ax.hexbin(feature, target, mincnt=1, cmap=color)
+    p = ax.hexbin(feature, target, mincnt=1, cmap=colormap)
+    ax.set_xlabel(feature.name)
+    ax.set_ylabel(target.name)
     if add_colorbar:
         plt.colorbar(p, ax=ax)
 
@@ -515,246 +633,271 @@ def plot_nume_REGR(ax,
             x2 = np.quantile(df_spline["x"].values, np.arange(0.01, 1, 0.01))
             y2 = splev(x2, spl)
             ax.plot(x2, y2, color="black")
-
-    # Set labels
-    #ax.set_ylabel(target.name)
-    #ax.set_xlabel(feature.name)
+    if add_miss_info:
+        ax.set_xlabel(ax.get_xlabel() + " (" + format(pct_miss_feature, "0.1f") + "% NA)")
     if title is not None:
         ax.set_title(title)
-        
-        
-    # Get limits before any insetting
-    if feature_lim is None:
-        feature_lim = ax.get_xlim()
-    if target_lim is None:
-        target_lim = ax.get_ylim()
-        
-    # Add y density
-    if add_y_density:
-        # Inner Histogram on y
-        inset_ax_y = ax.inset_axes([0, 0, inset_size, 1], zorder=10)
-        inset_ax_y.get_xaxis().set_visible(False)
-        ax.get_shared_y_axes().join(ax, inset_ax_y)
-        sns.histplot(y=target, color="grey", stat="density", kde=True, bins=n_bins, ax=inset_ax_y)
+    if target_lim is not None:
+        ax.set_ylim(target_lim)
+    if feature_lim is not None:
+        ax.set_xlim(feature_lim)
 
+    # Refline
+    if refline:
+        ax.axhline(target.mean(), ls="dashed", color="black")
+
+    # Add y density
+    if add_target_distribution:
+
+        # Memorize ticks and limits
+        xticks = ax.get_xticks()
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
+
+        # Create space
+        ax.set_xlim(xlim[0] - 1.2 * inset_size * (xlim[1] - xlim[0]), xlim[1])
+
+        # Create shared inset axis
+        inset_ax_y = ax.inset_axes([0, 0, inset_size, 1])  # , zorder=10)
+        ax.get_shared_y_axes().join(ax, inset_ax_y)
+
+        # Plot histogram
+        sns.histplot(y=target, color="grey", stat="density", kde=True, bins=n_bins, ax=inset_ax_y)
+        inset_ax_y.set_ylim(ylim)
+
+        # Remove overlayed elements
+        inset_ax_y.set_xticklabels([])
+        inset_ax_y.set_yticklabels([])
+        inset_ax_y.set_xlabel("")
+        inset_ax_y.set_ylabel("")
+
+        # More space for plot
+        left, right = inset_ax_y.get_xlim()
+        inset_ax_y.set_xlim(left, right * 1.2)
+
+        # Border
+        #inset_ax_y.axvline(inset_ax_y.get_xlim()[1], color="black")
+
+        # Remove senseless ticks
+        _ = ax.set_xticks(xticks[(xticks >= xlim[0]) & (xticks <= xlim[1])])
+
+        # Add Boxplot
         if add_boxplot:
-            # Inner-inner Boxplot on y
+
+            # Create space
             xlim_inner = inset_ax_y.get_xlim()
-            inset_ax_y.set_xlim(xlim_inner[0] - 1.5 * inset_size * (xlim_inner[1] - xlim_inner[0]))
+            inset_ax_y.set_xlim(xlim_inner[0] - 2 * inset_size * (xlim_inner[1] - xlim_inner[0]))
+
+            # Create shared inset axis without any elements
             inset_inset_ax_y = inset_ax_y.inset_axes([0, 0, inset_size, 1])
             inset_inset_ax_y.set_axis_off()
             inset_ax_y.get_shared_y_axes().join(inset_ax_y, inset_inset_ax_y)
+
+            # Plot boxplot
             sns.boxplot(y=target, color="lightgrey", orient="v",
                         showmeans=True, meanprops={"marker": "x",
                                                    "markerfacecolor": "white", "markeredgecolor": "white"},
                         ax=inset_inset_ax_y)
+            inset_inset_ax_y.set_ylim(ylim)
+
+            # More space for plot
+            left, right = inset_inset_ax_y.get_xlim()
+            range = right - left
+            inset_inset_ax_y.set_xlim(left - range * 0.5, right)
 
     # Add x density
-    if add_x_density:
-        # Inner Histogram on x
-        inset_ax_x = ax.inset_axes([0, 0, 1, inset_size], zorder=10)
-        inset_ax_x.get_yaxis().set_visible(False)
-        ax.get_shared_x_axes().join(ax, inset_ax_x)
-        sns.histplot(x=feature, color="grey", stat="density", kde=True, bins=n_bins, ax=inset_ax_x)
+    if add_feature_distribution:
 
+        # Memorize ticks and limits
+        yticks = ax.get_yticks()
+        ylim = ax.get_ylim()
+        xlim = ax.get_xlim()
+
+        # Create space
+        ax.set_ylim(ylim[0] - 1.2 * inset_size * (ylim[1] - ylim[0]), ylim[1])
+
+        # Create shared inset axis
+        inset_ax_x = ax.inset_axes([0, 0, 1, inset_size])  # , zorder=10)
+        ax.get_shared_x_axes().join(ax, inset_ax_x)
+
+        # Plot histogram
+        sns.histplot(x=feature, color="grey", stat="density", kde=True, bins=n_bins, ax=inset_ax_x)
+        inset_ax_x.set_xlim(xlim)
+
+        # Remove overlayed elements
+        inset_ax_x.set_xticklabels([])
+        inset_ax_x.set_yticklabels([])
+        inset_ax_x.set_xlabel("")
+        inset_ax_x.set_ylabel("")
+
+        # More space for plot
+        left, right = inset_ax_x.get_ylim()
+        inset_ax_x.set_ylim(left, right * 1.2)
+
+        # Border
+        #inset_ax_x.axhline(inset_ax_x.get_ylim()[1], color="black")
+
+        # Remove senseless ticks
+        _ = ax.set_yticks(yticks[(yticks >= ylim[0]) & (yticks <= ylim[1])])
+
+        # Add Boxplot
         if add_boxplot:
-            # Inner-inner Boxplot on x
+
+            # Create space
             ylim_inner = inset_ax_x.get_ylim()
-            inset_ax_x.set_ylim(ylim_inner[0] - 1.5 * inset_size * (ylim_inner[1] - ylim_inner[0]))
+            inset_ax_x.set_ylim(ylim_inner[0] - 2 * inset_size * (ylim_inner[1] - ylim_inner[0]))
+
+            # Create shared inset axis without any elements
             inset_inset_ax_x = inset_ax_x.inset_axes([0, 0, 1, inset_size])
             inset_inset_ax_x.set_axis_off()
             inset_ax_x.get_shared_x_axes().join(inset_ax_x, inset_inset_ax_x)
+
+            # PLot boxplot
             sns.boxplot(x=feature, color="lightgrey",
                         showmeans=True, meanprops={"marker": "x", "markerfacecolor": "white",
                                                    "markeredgecolor": "white"},
                         ax=inset_inset_ax_x)
+            inset_inset_ax_x.set_xlim(xlim)
 
-    '''
-    if ylim is not None:
-        inset_inset_ax_y.set_ylim(ylim)
-        inset_ax_y.set_ylim(ylim)
-        
-    if xlim is not None:
-        inset_inset_ax_x.set_xlim(xlim)
-        inset_ax_x.set_xlim(xlim)
-    '''
+            # More space for plot
+            left, right = inset_inset_ax_x.get_ylim()
+            range = right - left
+            inset_inset_ax_x.set_ylim(left - range * 0.5, right)
 
-    # Set limits
-    #xticks = ax.get_xticks()
-    #yticks = ax.get_yticks()
-    ax.set_xlim(feature_lim[0] - 1.5 * inset_size * (feature_lim[1] - feature_lim[0]), feature_lim[1])
-    ax.set_ylim(target_lim[0] - 1.5 * inset_size * (target_lim[1] - target_lim[0]), target_lim[1])
-    #_ = ax.set_xticks(xticks[xticks > feature_lim[0]])
-    #_ = ax.set_yticks(yticks[yticks > target_lim[0]])
-    
     # Hide intersection
-    if add_y_density and add_x_density:
-        inset_ax_over = ax.inset_axes([0, 0, inset_size, inset_size], zorder=20)
+    if add_feature_distribution and add_target_distribution:
+        inset_ax_over = ax.inset_axes([0, 0, inset_size, inset_size])  # , zorder=20)
         inset_ax_over.set_facecolor("white")
         inset_ax_over.get_xaxis().set_visible(False)
         inset_ax_over.get_yaxis().set_visible(False)
+        for pos in ["bottom", "left"]:
+            inset_ax_over.spines[pos].set_edgecolor(None)
 
 
-# Scatterplot as heatmap
-def plot_biscatter(ax, x, y, xlabel=None, ylabel=None,
-                   title=None, xlim=None, ylim=None,
-                   regplot=False, smooth=0.5,
-                   add_y_density=True, add_x_density=True, n_bins=20,
-                   add_boxplot=True,
-                   inset_size=0.2,
-                   add_colorbar=True):
-
-    ax = ax
-
-    # Remove names
-    if (xlabel is not None) and isinstance(x, pd.Series):
-        x.name = xlabel
-    if (ylabel is not None) and isinstance(y, pd.Series):
-        y.name = ylabel
-
-    '''
-    # Helper for scaling of heat-points
-    heat_scale = 1
-    if ylim is not None:
-        ax.set_ylim(ylim)
-        heat_scale = heat_scale * (ylim[1] - ylim[0]) / (np.max(y) - np.min(y))
-    if xlim is not None:
-        ax.set_xlim(xlim)
-        heat_scale = heat_scale * (xlim[1] - xlim[0]) / (np.max(x) - np.min(x))
-    '''
-
-    # Heatmap
-    heat_cmap = LinearSegmentedColormap.from_list("bl_yl_rd", ["blue", "yellow", "red"])
-    #p = ax.hexbin(x, y, gridsize=(int(50 * heat_scale), 50), mincnt=1, cmap=heat_cmap)
-    p = ax.hexbin(x, y, mincnt=1, cmap=heat_cmap)
-    if add_colorbar:
-        plt.colorbar(p, ax=ax)
-
-    # Spline
-    if regplot:
-        if len(x) < 1000:
-            sns.regplot(x=x, y=y, lowess=True, scatter=False, color="black", ax=ax)
-        else:
-            df_spline = (pd.DataFrame({"x": x, "y": y})
-                         .groupby("x")[["y"]].agg(["mean", "count"])
-                         .pipe(lambda x: x.set_axis([a + "_" + b for a, b in x.columns],
-                                                    axis=1, inplace=False))
-                         .assign(w=lambda x: np.sqrt(x["y_count"]))
-                         .sort_values("x")
-                         .reset_index())
-            spl = splrep(x=df_spline["x"].values, y=df_spline["y_mean"].values, w=df_spline["w"].values,
-                         s=len(x) * smooth)
-            x2 = np.quantile(df_spline["x"].values, np.arange(0.01, 1, 0.01))
-            y2 = splev(x2, spl)
-            ax.plot(x2, y2, color="black")
-
-    # Set labels
-    ax.set_ylabel(ylabel)
-    ax.set_xlabel(xlabel)
-    if title is not None:
-        ax.set_title(title)
-
-    # Get limits before any insetting
-    if ylim is None:
-        ylim = ax.get_ylim()
-    if xlim is None:
-        xlim = ax.get_xlim()
-
-    # Add y density
-    if add_y_density:
-        # Inner Histogram on y
-        inset_ax_y = ax.inset_axes([0, 0, inset_size, 1], zorder=10)
-        inset_ax_y.get_xaxis().set_visible(False)
-        ax.get_shared_y_axes().join(ax, inset_ax_y)
-        sns.histplot(y=y, color="grey", stat="density", kde=True, bins=n_bins, ax=inset_ax_y)
-
-        if add_boxplot:
-            # Inner-inner Boxplot on y
-            xlim_inner = inset_ax_y.get_xlim()
-            inset_ax_y.set_xlim(xlim_inner[0] - 1.5 * inset_size * (xlim_inner[1] - xlim_inner[0]))
-            inset_inset_ax_y = inset_ax_y.inset_axes([0, 0, inset_size, 1])
-            inset_inset_ax_y.set_axis_off()
-            inset_ax_y.get_shared_y_axes().join(inset_ax_y, inset_inset_ax_y)
-            sns.boxplot(y=y, color="lightgrey", orient="v",
-                        showmeans=True, meanprops={"marker": "x",
-                                                   "markerfacecolor": "white", "markeredgecolor": "white"},
-                        ax=inset_inset_ax_y)
-
-    # Add x density
-    if add_x_density:
-        # Inner Histogram on x
-        inset_ax_x = ax.inset_axes([0, 0, 1, inset_size], zorder=10)
-        inset_ax_x.get_yaxis().set_visible(False)
-        ax.get_shared_x_axes().join(ax, inset_ax_x)
-        sns.histplot(x=x, color="grey", stat="density", kde=True, bins=n_bins, ax=inset_ax_x)
-
-        if add_boxplot:
-            # Inner-inner Boxplot on x
-            ylim_inner = inset_ax_x.get_ylim()
-            inset_ax_x.set_ylim(ylim_inner[0] - 1.5 * inset_size * (ylim_inner[1] - ylim_inner[0]))
-            inset_inset_ax_x = inset_ax_x.inset_axes([0, 0, 1, inset_size])
-            inset_inset_ax_x.set_axis_off()
-            inset_ax_x.get_shared_x_axes().join(inset_ax_x, inset_inset_ax_x)
-            sns.boxplot(x=x, color="lightgrey",
-                        showmeans=True, meanprops={"marker": "x", "markerfacecolor": "white",
-                                                   "markeredgecolor": "white"},
-                        ax=inset_inset_ax_x)
-
-    '''
-    if ylim is not None:
-        inset_inset_ax_y.set_ylim(ylim)
-        inset_ax_y.set_ylim(ylim)
-        
-    if xlim is not None:
-        inset_inset_ax_x.set_xlim(xlim)
-        inset_ax_x.set_xlim(xlim)
-    '''
-
-    # Set limits
-    ax.set_ylim(ylim[0] - 1.5 * inset_size * (ylim[1] - ylim[0]), ylim[1])
-    ax.set_xlim(xlim[0] - 1.5 * inset_size * (xlim[1] - xlim[0]), xlim[1])
-
-    # Hide intersection
-    if add_y_density and add_x_density:
-        inset_ax_over = ax.inset_axes([0, 0, inset_size, inset_size], zorder=20)
-        inset_ax_over.set_facecolor("white")
-        inset_ax_over.get_xaxis().set_visible(False)
-        inset_ax_over.get_yaxis().set_visible(False)
-
-
-
-
-
-# TODO HERE
 def plot_feature_target(ax,
                         feature, target, feature_type=None, target_type=None,
-                        feature_label=None, target_label=None,
-                        target_lim=None,
+                        feature_name=None, target_name=None,
                         target_category=None,
-                        min_width=0.2, inset_size=0.2, refline=True,
-                        title=None, varimp=None, varimp_fmt="0.2f",
-                        color=colorblind[1]):
+                        feature_lim=None, target_lim=None,
+                        min_width=0.2, inset_size=0.2, refline=True, n_bins=20,
+                        regplot=True, smooth=0.5, add_colorbar=True,
+                        add_feature_distribution=True, add_target_distribution=True, add_boxplot=True,
+                        title=None,
+                        add_miss_info=True,
+                        color=list(sns.color_palette("colorblind").as_hex()),
+                        colormap=LinearSegmentedColormap.from_list("bl_yl_rd", ["blue", "yellow", "red"])):
 
     # Determine feature and target type
-    if feature_type is not None:
+    if feature_type is None:
         feature_type = "nume" if pd.api.types.is_numeric_dtype(feature) else "cate"
-    if target_type is not None:
-        target_type = dict(binary="CLASS", continuous="REGR", multiclass="MULTICLASS")[type_of_target(target)]
+    if target_type is None:
+        target_type = (dict(binary="CLASS", continuous="REGR", multiclass="MULTICLASS")
+                       [type_of_target(target[~pd.Series(target).isna()])])
 
     # Call plot functions
-    params = dict(ax=ax, feature=feature, target=target, feature_label=feature_label, target_label=target_label)
+    params = dict(ax=ax, feature=feature, target=target,
+                  feature_name=feature_name, target_name=target_name,
+                  target_category=target_category,
+                  feature_lim=feature_lim, target_lim=target_lim,
+                  min_width=min_width, inset_size=inset_size, refline=refline, n_bins=n_bins,
+                  regplot=regplot, smooth=smooth, add_colorbar=add_colorbar,
+                  add_feature_distribution=add_feature_distribution, add_target_distribution=add_target_distribution,
+                  add_boxplot=add_boxplot,
+                  title=title,
+                  add_miss_info=add_miss_info,
+                  color=color,
+                  colormap=colormap)
     if feature_type == "nume":
-        if target_type in ["CLASS", "MULTICLASS"]:
+        if target_type == "CLASS":
             plot_nume_CLASS(**params)
+        elif target_type == "MULTICLASS":
+            plot_nume_MULTICLASS(**params)
         elif target_type == "REGR":
             plot_nume_REGR(**params)
+        else:
+            raise Exception('Wrong TARGET_TYPE')
+
     else:
         if target_type == "CLASS":
             plot_cate_CLASS(**params)
+        elif target_type == "MULTICLASS":
+            plot_cate_MULTICLASS(**params)
         elif target_type == "REGR":
             plot_cate_REGR(**params)
         else:
-            warnings.warn("MULTICLASS not implemented")
+            raise Exception('Wrong TARGET_TYPE')
+
+    # Create Frame
+    # for spine in ax.spines.values():
+    #    spine.set_edgecolor('black')
+
+
+# Plot correlation
+def plot_corr(ax, df, method, absolute=True, cutoff=None, n_jobs=1):
+
+    # Check for mixed types
+    count_numeric_dtypes = df.apply(lambda x: pd.api.types.is_numeric_dtype(x)).sum()
+    if count_numeric_dtypes not in [0, df.shape[1]]:
+        raise Exception('Mixed dtypes.')
+
+    # Metr
+    if count_numeric_dtypes != 0:
+        if method not in ["pearson", "spearman"]:
+            raise Exception('False method for numeric values: Choose "pearson" or "spearman"')
+        df_corr = df.corr(method=method)
+        suffix = " (" + round(df.isnull().mean() * 100, 1).astype("str") + "% NA)"
+
+    # Cate
+    else:
+        if method not in ["cramersv"]:
+            raise Exception('False method for numeric values: Choose "cramersv"')
+        n = df.shape[1]
+        df_corr = pd.DataFrame(np.zeros([n, n]), index=df.columns.values, columns=df.columns.values)
+        l_tup = [(i, j) for i in range(n) for j in range(i + 1, n)]
+        result = Parallel(n_jobs=n_jobs, max_nbytes='100M')(delayed(corrcat)(df.iloc[:, i], df.iloc[:, j])
+                                                            for i, j in l_tup)
+        for k, (i, j) in enumerate(l_tup):
+            df_corr.iloc[i, j] = result[k]
+            #df_corr.iloc[i, j] = corrcat(df.iloc[:, i], df.iloc[:, j])
+            df_corr.iloc[j, i] = df_corr.iloc[i, j]
+
+        '''
+        for i in range(n):
+            for j in range(i+1, n):
+                df_corr.iloc[i, j] = corrcat(df.iloc[:, i], df.iloc[:, j])
+                df_corr.iloc[j, i] = df_corr.iloc[i, j]
+        '''
+        suffix = " (" + df.nunique().astype("str").values + ")"
+
+    # Add info to names
+    d_new_names = dict(zip(df_corr.columns.values, df_corr.columns.values + suffix))
+    df_corr.rename(columns=d_new_names, index=d_new_names, inplace=True)
+
+    # Absolute trafo
+    if absolute:
+        df_corr = df_corr.abs()
+
+    # Filter out rows or cols below cutoff and then fill diagonal
+    if cutoff is not None:
+        i_cutoff = (df_corr.max(axis=1) > cutoff).values
+        df_corr = df_corr.loc[i_cutoff, i_cutoff]
+    np.fill_diagonal(df_corr.values, 1)
+
+    # Cluster df_corr
+    tmp_order = linkage(1 - np.triu(df_corr),
+                        method="average", optimal_ordering=False)[:, :2].flatten().astype(int)
+    new_order = df_corr.columns.values[tmp_order[tmp_order < len(df_corr)]]
+    df_corr = df_corr.loc[new_order, new_order]
+
+    # Plot
+    sns.heatmap(df_corr, annot=True, fmt=".2f", cmap="Reds" if absolute else "BLues",
+                xticklabels=True, yticklabels=True, ax=ax)
+    ax.set_yticklabels(labels=ax.get_yticklabels(), rotation=0)
+    ax.set_xticklabels(labels=ax.get_xticklabels(), rotation=90)
+    ax.set_title(("Absolute " if absolute else "") + method.upper() + " Correlation" +
+                 (" (cutoff: " + str(cutoff) + ")" if cutoff is not None else ""))
+
+    return df_corr
 
 
 ########################################################################################################################
@@ -769,7 +912,7 @@ def undersample(df, target, n_max_per_level, random_state=42):
     df_under = (df.groupby(target).apply(lambda x: x.sample(min(n_max_per_level, x.shape[0]),
                                                             random_state=random_state))
                 .sample(frac=1)  # shuffle
-                .reset_index(drop=True))  
+                .reset_index(drop=True))
     b_sample = df_under[target].value_counts().values / len(df_under)
     return df_under, b_sample, b_all
 
@@ -783,8 +926,8 @@ class KFoldSep(KFold):
         i_test_fold = np.arange(len(X))[test_fold]
         for i_train, i_test in super().split(X, y, groups):
             yield i_train[~np.isin(i_train, i_test_fold)], i_test[np.isin(i_test, i_test_fold)]
-  
-  
+
+
 # Splitter: test==train fold, i.e. in-sample selection, needed for quick change of cross-validation code to non-cv
 class InSampleSplit:
     def __init__(self, shuffle=True, random_state=42):
@@ -800,7 +943,7 @@ class InSampleSplit:
 
     def get_n_splits(self, *args):
         return 1
-    
+
 
 # Column selector: Workaround as scikit's ColumnTransformer currently needs same columns for fit and transform (bug!)
 class ColumnSelector(BaseEstimator, TransformerMixin):
@@ -872,7 +1015,7 @@ class GridSearchCV_xlgb(GridSearchCV):
                             yhat_train = fit.predict_proba(_safe_indexing(X, i_train), ntree_limit=ntree_limit)
                         else:
                             yhat_train = fit.predict(_safe_indexing(X, i_train), ntree_limit=ntree_limit)
-                            
+
                     # Get time metrics
                     df_results = df_results.append(pd.DataFrame(dict(fold_type="train", fold=fold,
                                                                      scorer="time", scorer_value=fit_time,
@@ -938,18 +1081,129 @@ class GridSearchCV_xlgb(GridSearchCV):
 
 # --- Plots ---------------------------------------------------------------------------------------
 
+# Plot cv results
+def plot_cvresults(cv_results, metric, x_var, color_var=None, style_var=None, column_var=None, row_var=None,
+                   show_gap=True, show_std=False, color=list(sns.color_palette("tab10").as_hex()),
+                   height=6):
+
+    # Transform results
+    df_cvres = pd.DataFrame.from_dict(cv_results)
+    df_cvres.columns = df_cvres.columns.str.replace("param_", "")
+    #df_cvres[x_var] = df_cvres[x_var].astype("float")
+    if show_gap:
+        df_cvres["gap"] = df_cvres["mean_train_" + metric] - df_cvres["mean_test_" + metric]
+        gap_range = (df_cvres["gap"].min(), df_cvres["gap"].max())
+
+    # Define plot function to use in FacetGrid
+    def tmp(x, y, y2=None, std=None, std2=None, data=None,
+            hue=None, style=None, color=None,
+            show_gap=False, gap_range=None):
+
+        # Test results
+        sns.lineplot(x=x, y=y, data=data, hue=hue,
+                     style=style, linestyle="-", markers=True if style is not None else None, dashes=False,
+                     marker=True if style is not None else "o",
+                     palette=color)
+
+        # Train results
+        sns.lineplot(x=x, y=y2, data=data, hue=hue,
+                     style=style, linestyle="--", markers=True if style is not None else None, dashes=False,
+                     marker=True if style is not None else "o",
+                     palette=color)
+
+        # Std bands
+        if std is not None or std2 is not None:
+            if hue is None:
+                data[hue] = "dummy"
+            if style is None:
+                data[style] = "dummy"
+            data = data.reset_index(drop=True)
+            for key, val in data.groupby([hue, style]).groups.items():
+                data_group = data.iloc[val, :]
+                color_group = list(np.array(color)[data[hue].unique() == key[0]])[0]
+                if std is not None:
+                    plt.gca().fill_between(data_group[x],
+                                           data_group[y] - data_group[std], data_group[y] + data_group[std],
+                                           color=color_group, alpha=0.1)
+                if std2 is not None:
+                    plt.gca().fill_between(data_group[x],
+                                           data_group[y2] - data_group[std2], data_group[y2] + data_group[std2],
+                                           color=color_group, alpha=0.1)
+
+        # Generalization gap
+        if show_gap:
+            ax2 = plt.gca().twinx()
+            sns.lineplot(x=x, y="gap", data=data, hue=hue,
+                         style=style, linestyle=":", markers=True if style is not None else None, dashes=False,
+                         marker=True if style is not None else "o",
+                         palette=color,
+                         ax=ax2)
+            ax2.set_ylabel("")
+            ax2.get_legend().remove()
+            ax2.set_ylim(gap_range)
+            # ax2.axis("off")
+        return plt.gca()
+
+    # Plot FacetGrid
+    g = (sns.FacetGrid(df_cvres, col=column_var, row=row_var, margin_titles=False if show_gap else True, 
+                       height=height, aspect=1)
+         .map_dataframe(tmp, x=x_var, y="mean_test_" + metric, y2="mean_train_" + metric,
+                        std="std_test_" + metric if show_std else None,
+                        std2="std_train_" + metric if show_std else None,
+                        hue=color_var, style=style_var, color=color[:df_cvres[color_var].nunique()],
+                        show_gap=show_gap, gap_range=gap_range if show_gap else None)
+         .set_xlabels(x_var)
+         .add_legend(title=None if style_var is not None else color_var))
+
+    # Beautify and title
+    g.legend._legend_box.align = "left"
+    g.fig.subplots_adjust(wspace=0.2, hspace=0.1)
+    g.fig.subplots_adjust(top=0.9)
+    _ = g.fig.suptitle(metric + ": test (-) vs train (--)" + (" and gap (:)" if show_gap else ""), fontsize=16)
+    g.tight_layout()
+    return g
+
+
 # Plot model comparison
-def plot_modelcomp(df_modelcomp_result, modelvar="model", runvar="run", scorevar="test_score", pdf=None):
-    fig, ax = plt.subplots(1, 1)
+def plot_modelcomp(ax, df_modelcomp_result, modelvar="model", runvar="run", scorevar="test_score"):
     sns.boxplot(data=df_modelcomp_result, x=modelvar, y=scorevar, showmeans=True,
                 meanprops={"markerfacecolor": "black", "markeredgecolor": "black"},
                 ax=ax)
     sns.lineplot(data=df_modelcomp_result, x=modelvar, y=scorevar,
-                 hue="#" + df_modelcomp_result[runvar].astype("str"), linewidth=0.5, linestyle=":",
+                 hue=df_modelcomp_result[runvar], linewidth=0.5, linestyle=":",
                  legend=None, ax=ax)
-    if pdf is not None:
-        fig.savefig(pdf)
 
+
+# Plot learning curve
+def plot_learningcurve(ax, n_train, score_train, score_test, time_train,
+                       add_time=True,
+                       color=list(sns.color_palette("tab10").as_hex())):
+
+    score_train_mean = np.mean(score_train, axis=1)
+    score_train_std = np.std(score_train, axis=1)
+    score_test_mean = np.mean(score_test, axis=1)
+    score_test_std = np.std(score_test, axis=1)
+    time_train_mean = np.mean(time_train, axis=1)
+    time_train_std = np.std(time_train, axis=1)
+
+    # Plot learning curve
+    ax.plot(n_train, score_train_mean, label="Train", marker='o', color=color[0])
+    ax.plot(n_train, score_test_mean, label="Test", marker='o', color=color[1])
+    ax.fill_between(n_train, score_train_mean - score_train_std, score_train_mean + score_train_std,
+                    alpha=0.1, color=color[0])
+    ax.fill_between(n_train, score_test_mean - score_test_std, score_test_mean + score_test_std,
+                    alpha=0.1, color=color[1])
+
+    # Plot fitting time
+    if add_time:
+        ax2 = ax.twinx()
+        ax2.plot(n_train, time_train_mean, label="Time", marker="x", linestyle=":", color="grey")
+        # ax2.fill_between(n_train, time_train_mean - time_train_std, time_train_mean + time_train_std,
+        #                 alpha=0.1, color="grey")
+        ax2.set_ylabel("Fitting time [s]")
+    ax.legend(loc="best")
+    ax.set_ylabel("Score")
+    ax.set_title("Learning curve")
 
 
 ########################################################################################################################
@@ -968,7 +1222,7 @@ def scale_predictions(yhat, b_sample=None, b_all=None):
             flag_1dim = True
             yhat = np.column_stack((1 - yhat, yhat))
         tmp = (yhat * b_all) / b_sample
-        yhat_rescaled = tmp / tmp.sum(axis=1, keepdims=True)  
+        yhat_rescaled = tmp / tmp.sum(axis=1, keepdims=True)
     if flag_1dim:
         yhat_rescaled = yhat_rescaled[:, 1]
     return yhat_rescaled
@@ -1036,7 +1290,7 @@ def varimp2df(varimp, features):
 
 
 # Dataframe based permutation importance which can select a subset of features for which to calculate VI
-def variable_importance(estimator, df, y, features, target_type=None, scoring=None, 
+def variable_importance(estimator, df, y, features, target_type=None, scoring=None,
                         n_jobs=None, random_state=None, **_):
 
     # Original performance
@@ -1048,19 +1302,17 @@ def variable_importance(estimator, df, y, features, target_type=None, scoring=No
     # Performance per variable after permutation
     np.random.seed(random_state)
     i_perm = np.random.permutation(np.arange(len(df)))  # permutation vector
-    
+
     def run_in_parallel(df, feature):
         #feature = features[0]
         df_copy = df.copy()
         df_copy[feature] = df_copy[feature].values[i_perm]
         yhat_perm = estimator.predict(df_copy) if target_type == "REGR" else estimator.predict_proba(df_copy)
-        score = scoring._score_func(y, yhat_perm)      
-        return score    
+        score = scoring._score_func(y, yhat_perm)
+        return score
     scores = Parallel(n_jobs=n_jobs, max_nbytes='100M')(delayed(run_in_parallel)(df, feature)
-                                                        for feature in features)    
+                                                        for feature in features)
     return varimp2df({"importances_mean": score_orig - scores}, features)
-
-
 
 
 # Dataframe based patial dependence which can use a reference dataset for value-grid defintion
@@ -1094,7 +1346,7 @@ def partial_dependence(estimator, df, features,
         df_return["value"] = values
 
         return df_return
-    
+
     # Run in parallel and append
     l_pd = (Parallel(n_jobs=n_jobs, max_nbytes='100M')(delayed(run_in_parallel)(feature)
                                                        for feature in features))
@@ -1119,14 +1371,14 @@ def shap2pd(shap_values, features,
         if pd.api.types.is_numeric_dtype(df_ref[feature]):
             kbinsdiscretizer_fit = KBinsDiscretizer(n_bins=n_bins, encode="ordinal").fit(df_ref[[feature]])
             bin_edges = kbinsdiscretizer_fit.bin_edges_
-            bin_labels = np.array([format(bin_edges[0][i], format_string) + " - " + 
+            bin_labels = np.array([format(bin_edges[0][i], format_string) + " - " +
                                    format(bin_edges[0][i + 1], format_string)
                                    for i in range(len(bin_edges[0]) - 1)])
             df_shap = pd.DataFrame({"value": bin_labels[(kbinsdiscretizer_fit
                                                          .transform(shap_values.data[:, [i_feature]])[:, 0])
                                                         .astype(int)],
                                     "yhat": shap_values.values[:, i_feature]})  # TODO: MULTICLASS
-            
+
         # Categorical feature
         else:
             df_shap = pd.DataFrame({"value": shap_values.data[:, i_feature],
@@ -1146,7 +1398,7 @@ def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
     len_nume: number of numerical features building first columns of df_explain
     l_map_onehot:  like categories_ of onehot-encoder 
     '''
-    
+
     # Copy
     shap_values_agg = copy.copy(shap_values)
 
@@ -1159,8 +1411,8 @@ def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
     # Care for multiclass
     values_3d = np.atleast_3d(shap_values_agg.values)
     a_shap = np.empty((values_3d.shape[0], df_explain.shape[1], values_3d.shape[2]))
-    #for k in range(a_shap.shape[2]):
-        
+    # for k in range(a_shap.shape[2]):
+
     # Initilaize with nume shap valus (MUST BE AT BEGINNING OF df_explain)
     start_cate = len_nume
     a_shap[:, 0:start_cate, :] = values_3d[:, 0:start_cate, :].copy()
@@ -1170,15 +1422,15 @@ def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
         step = len(l_map_onehot[i])
         a_shap[:, len_nume + i, :] = values_3d[:, start_cate:(start_cate + step), :].sum(axis=1)
         start_cate = start_cate + step
-        
-    # Adapt non-multiclass    
+
+    # Adapt non-multiclass
     if a_shap.shape[2] == 1:
         a_shap = a_shap[:, :, 0]
     shap_values_agg.values = a_shap
 
     # Return
     return shap_values_agg
-   
+
 
 # --- Plots --------------------------------------------------------------------------
 
@@ -1329,8 +1581,8 @@ def plot_precision(ax, y, yhat, annotate=True, fontsize=10):
             i_thres = np.argmax(cutoff > thres)
             if i_thres:
                 ax.annotate(format(thres, "0.1f"), (pct_tested[i_thres], prec[i_thres]),
-                                fontsize=fontsize)
-                
+                            fontsize=fontsize)
+
 
 # Plot model performance for CLASS target
 def get_plotcalls_model_performance_CLASS(y, yhat,
@@ -1344,7 +1596,9 @@ def get_plotcalls_model_performance_CLASS(y, yhat,
     d_calls = dict()
     d_calls["roc"] = (plot_roc, dict(y=y, yhat=yhat))
     d_calls["confusion"] = (plot_confusion, dict(y=y, yhat=yhat, threshold=threshold, cmap=cmap))
-    d_calls["distribution"] = (plot_bidistribution, dict(x=yhat, group=y, xlim=(0, 1)))
+    d_calls["distribution"] = (plot_nume_CLASS, dict(feature=yhat, target=y, feature_lim=(0, 1), 
+                                                     feature_name=r"Predictions ($\^y$)",
+                                                     add_miss_info=False))
     d_calls["calibration"] = (plot_calibration, dict(y=y, yhat=yhat, n_bins=n_bins))
     d_calls["precision_recall"] = (plot_precision_recall, dict(y=y, yhat=yhat, annotate=annotate, fontsize=fontsize))
     d_calls["precision"] = (plot_precision, dict(y=y, yhat=yhat, annotate=annotate, fontsize=fontsize))
@@ -1436,7 +1690,6 @@ def plot_variable_importance(ax,
                              category_label="Importance",
                              category_color_palette=sns.xkcd_palette(["blue", "orange", "red"])):
 
-    ax = ax
     sns.barplot(importance, features, hue=category,
                 palette=category_color_palette, dodge=False, ax=ax)
     ax.set_title("Top{0: .0f} Feature Importances".format(len(features)))
@@ -1448,8 +1701,9 @@ def plot_variable_importance(ax,
         ax.set_xlabel(ax.get_xlabel() + " /\n" + r"cumulative in % (-$\bullet$-)")
     if importance_se is not None:
         ax.errorbar(x=importance, y=features, xerr=importance_se,
-                        fmt=".", marker="s", fillstyle="none", color="grey")
+                    fmt=".", marker="s", fillstyle="none", color="grey")
         ax.set_title(ax.get_title() + r" (incl. SE (-$\boxminus$-))")
+
     '''
     if column_score_diff is not None:
         ax2 = ax.twiny()
@@ -1459,17 +1713,17 @@ def plot_variable_importance(ax,
         ax2.grid(False)
     '''
 
+
 # Plot partial dependence
 def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, refline=None, ylim=None,
             legend_labels=None, color="red", min_width=0.2):
 
-    ax = ax
     numeric_feature = pd.api.types.is_numeric_dtype(feature)
-    #if yhat.ndim == 1: 
+    # if yhat.ndim == 1:
     #    yhat = yhat.reshape(-1, 1)
 
     if numeric_feature:
-        
+
         # Lineplot
         ax.plot(feature, yhat, marker=".", color=color)
 
@@ -1477,7 +1731,7 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
         if feature_ref is not None:
             ax2 = ax.twinx()
             ax2.axis("off")
-            sns.kdeplot(feature_ref, color="grey", 
+            sns.kdeplot(feature_ref, color="grey",
                         shade=True, linewidth=0,  # hist=False, kde=True, kde_kws={'shade': True, 'linewidth': 0},
                         ax=ax2)
         # Rugs
@@ -1518,9 +1772,9 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
 
         # Bar plot
         ax.barh(df_plot[feature_name], df_plot["yhat"],
-                    height=df_plot["width"] if feature_ref is not None else 0.8,
-                    color=color, edgecolor="black", alpha=0.5, linewidth=1)
-                
+                height=df_plot["width"] if feature_ref is not None else 0.8,
+                color=color, edgecolor="black", alpha=0.5, linewidth=1)
+
         # Refline
         if refline is not None:
             ax.axvline(refline, ls="dotted", color="black")  # priori line
@@ -1534,16 +1788,14 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
         # Crossvalidation
         if yhat_err is not None:
             ax.errorbar(df_plot["yhat"], df_plot[feature_name], xerr=df_plot["yhat_err"],
-                            fmt=".", marker="s", capsize=5, fillstyle="none", color="grey")
+                        fmt=".", marker="s", capsize=5, fillstyle="none", color="grey")
 
 
 # Plot shap
-def plot_shap(ax, shap_values, index, id, 
-              y_str=None, yhat_str=None, 
-              show_intercept=True, show_prediction=True, 
+def plot_shap(ax, shap_values, index, id,
+              y_str=None, yhat_str=None,
+              show_intercept=True, show_prediction=True,
               color=["blue", "red"], n_top=10, multiclass_index=None):
-
-    ax = ax
 
     # Subset in case of multiclass
     if multiclass_index is not None:
@@ -1602,23 +1854,23 @@ def plot_shap(ax, shap_values, index, id,
 
     # Plot bars
     ax.barh(df_plot["bar_label"], df_plot["bar"], left=df_plot["offset"], color=df_plot["color"],
-                alpha=0.5,
-                edgecolor="black")
+            alpha=0.5,
+            edgecolor="black")
 
     # Set axis limits
     ax.set_xlim(x_min - 0.1 * (x_max - x_min),
-                    x_max + 0.1 * (x_max - x_min))
+                x_max + 0.1 * (x_max - x_min))
 
     # Annotate
     for i in range(len(df_plot)):
         # Text
         ax.annotate(df_plot.iloc[i]["bar"].round(3),
-                        (df_plot.iloc[i]["offset"] + max(0, df_plot.iloc[i]["bar"]) + np.ptp(ax.get_xlim()) * 0.02,
-                        df_plot.iloc[i]["bar_label"]),
-                        # if ~df_plot.iloc[i][["bar_label"]].isin(["intercept", "Prediction"])[0] else "right",
-                        ha="left",
-                        va="center", size=10,
-                        color="black")  # "white" if i == (len(df_plot) - 1) else "black")
+                    (df_plot.iloc[i]["offset"] + max(0, df_plot.iloc[i]["bar"]) + np.ptp(ax.get_xlim()) * 0.02,
+                     df_plot.iloc[i]["bar_label"]),
+                    # if ~df_plot.iloc[i][["bar_label"]].isin(["intercept", "Prediction"])[0] else "right",
+                    ha="left",
+                    va="center", size=10,
+                    color="black")  # "white" if i == (len(df_plot) - 1) else "black")
 
         # Lines
         if i < (len(df_plot) - 1):
@@ -1634,7 +1886,5 @@ def plot_shap(ax, shap_values, index, id,
         title = title + " (y = " + y_str + ")"
     if yhat_str is not None:
         title = title + r" ($\^ y$ = " + yhat_str + ")"
-    ax.set_title(title)  
+    ax.set_title(title)
     ax.set_xlabel("shap")
-
-

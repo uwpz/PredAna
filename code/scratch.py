@@ -183,3 +183,25 @@ y2
 y2 = inter(x2)
 y2
 ax_act.plot(x2, y2, color="r")
+
+
+df["cnt_CLASS"][4] = np.nan
+df["weathersit"][4:10] = np.nan
+
+up.colorblind[1]
+
+f_nume = "temp"
+f_cate = "weathersit"
+
+#%%
+fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+up.plot_feature_target(ax, df[f_cate].values, df["cnt_REGR"].values,
+                       feature_name="feature", target_name="target",
+                       target_category="0_low",
+                       #target_lim=(2,6),
+                       feature_lim=(10, 30), add_boxplot=True,
+                       add_feature_distribution=True,
+                       add_target_distribution=True,
+                       min_width=0.5, inset_size=0.2, n_bins=50,
+                       title="title",
+                       add_miss_info=True)

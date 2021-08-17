@@ -6,13 +6,13 @@
 
 # General
 import numpy as np 
-import pandas as pd 
+import pandas as pd
+from pandas.core.indexes.api import all_indexes_same 
 import swifter
 import matplotlib.pyplot as plt
 import pickle
 from importlib import reload
 import time
-import hmsPM.plotting as hms_plot
 
 # Special
 from category_encoders import target_encoder
@@ -21,6 +21,8 @@ from sklearn.model_selection import KFold, ShuffleSplit, PredefinedSplit
 
 # Custom functions and classes
 import utils_plots as up
+
+# Setting
 import settings as sett
 
 
@@ -28,13 +30,13 @@ import settings as sett
 
 # Plot 
 plot = True
-%matplotlib
+%matplotlib 
 #%matplotlib qt / %matplotlib inline  # activate standard/inline window
-#plt.ioff()  # / plt.ion()  # stop/start standard window
+plt.ioff()  # / plt.ion()  # stop/start standard window
 #plt.plot(1, 1)
 
 # Specific parameters 
-TARGET_TYPES = ["REGR", "CLASS"]
+TARGET_TYPES = ["REGR", "CLASS", "MULTICLASS"]
 
 
 ########################################################################################################################
@@ -143,25 +145,6 @@ print(up.value_counts(df[nume + "_BINNED"], 6))
 onebin = (nume + "_BINNED")[(df[nume + "_BINNED"].nunique() == 1).values]
 print(onebin)
 
-#%%
-fig, ax = plt.subplots(1, 1)
-#up.plot_nume_CLASS(ax, df["temp"], df["cnt_CLASS"])
-up.plot_nume_REGR(ax, df["temp"], df["cnt_REGR"], regplot=True)
-#up.plot_cate_CLASS(ax, df["weathersit"], df["cnt_CLASS"])
-#up.plot_cate_REGR(ax, df["weathersit"], df["cnt_REGR"])
-#up.plot_nume_CLASS(ax, df["temp"], df["cnt_MULTICLASS"])
-#up.plot_cate_CLASS(ax, df["weathersit"], df["cnt_MULTICLASS"])
-#%%
-
-
-d_calls = dict()
-for feature_name in cate:
-    d_calls[feature_name] = (up.plot_cate_CLASS,
-                             dict(feature=df[feature_name], target=df["cnt_CLASS"]))
-up.plot_function_calls(list(d_calls.values()), pdf_path=sett.plotloc + "tmp2.pdf")
-
-
-
 
 # --- Missings + Outliers + Skewness -----------------------------------------------------------------------------------
 
@@ -176,12 +159,12 @@ df[nume].describe()
 start = time.time()
 for TARGET_TYPE in TARGET_TYPES:
     if plot:
-        distr_nume_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n_cols=3, w=18, h=12,
-                                                                     show_regplot=True)
-                            .plot(features=df[nume],
-                                  target=df["cnt_" + TARGET_TYPE],
-                                  file_path=sett.plotloc + "1__distr_nume_orig__" + TARGET_TYPE + ".pdf"))
-    print(time.time() - start)
+        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume_orig__" + TARGET_TYPE + "1.pdf",
+                            l_calls=[(up.plot_feature_target,
+                                      dict(feature=df[feature], target=df["cnt_" + TARGET_TYPE], 
+                                           smooth=30)) 
+                                     for feature in nume])        
+print(time.time() - start)
     
 # Winsorize (hint: plot again before deciding for log-trafo)
 df[nume] = up.Winsorize(lower_quantile=None, upper_quantile=0.99).fit_transform(df[nume])
@@ -208,12 +191,12 @@ for TARGET_TYPE in TARGET_TYPES:
     
     # Plot
     if plot:
-        distr_nume_plots = (hms_plot.MultiFeatureDistributionPlotter(show_regplot=True,
-                                                                     n_rows=2, n_cols=2, w=12, h=8)
-                            .plot(features=df[np.column_stack((nume, nume + "_BINNED")).ravel()],
-                                  target=df["cnt_" + TARGET_TYPE],
-                                  varimps=varperf_nume.round(2),
-                                  file_path=sett.plotloc + "1__distr_nume__" + TARGET_TYPE + ".pdf"))
+        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume__" + TARGET_TYPE + "1.pdf", 
+                            l_calls=[(up.plot_feature_target,
+                                      dict(feature=df[feature], target=df["cnt_" + TARGET_TYPE], 
+                                           title=feature + "(VI: " + format(varperf_nume[feature], "0.2f") + ")",
+                                           smooth=30)) 
+                                     for feature in np.column_stack((nume, nume + "_BINNED")).ravel()])
 
 
 # --- Removing variables -----------------------------------------------------------------------------------------------
@@ -224,8 +207,9 @@ nume = up.diff(nume, remove)
 
 # Remove highly/perfectly (>=98%) correlated (the ones with less NA!)
 df[nume].describe()
-corr_plot = (hms_plot.CorrelationPlotter(cutoff=0, w=8, h=6)
-             .plot(features=df[nume], file_path=sett.plotloc + "1__corr_nume.pdf"))
+_ = up.plot_l_calls(pdf_path=sett.plotloc + "1__corr_nume1.pdf", n_rows=1, n_cols=1, figsize=(6, 6),
+                    l_calls=[(up.plot_corr,
+                              dict(df=df[nume], method="spearman", cutoff=0))])
 remove = ["atemp"]
 nume = up.diff(nume, remove)
 
@@ -244,12 +228,12 @@ varperf_nume_fold = df[nume].swifter.apply(lambda x: up.variable_performance(x, 
 nume_toprint = varperf_nume_fold[varperf_nume_fold > 0.53].index.values
 if len(nume_toprint):
     if plot:
-        distr_nume_folddep_plots = (hms_plot.MultiFeatureDistributionPlotter(show_regplot=True,
-                                                                             n_rows=2, n_cols=3, w=18, h=12)
-                                    .plot(features=df[nume_toprint],
-                                          target=df["fold"],
-                                          varimps=varperf_nume_fold,
-                                          file_path=sett.plotloc + "1__distr_nume_folddep.pdf"))
+        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume_folddep" + TARGET_TYPE + "1.pdf",
+                            l_calls=[(up.plot_feature_target,
+                                      dict(feature=df[feature], target=df["fold"],
+                                           title=feature + "(VI: " + format(varperf_nume_fold[feature], "0.2f") + ")",
+                                           smooth=30))
+                                     for feature in nume_toprint])
 
 
 # --- Missing indicator and imputation (must be done at the end of all processing)--------------------------------------
@@ -309,10 +293,9 @@ if len(toomany):
 # --- Final variable information ---------------------------------------------------------------------------------------
 
 for TARGET_TYPE in TARGET_TYPES:
+    #TARGET_TYPE = "CLASS"
 
     # Univariate variable importance
-    #varperf_cate = up.variable_performance(df[np.append(cate, ["MISS_" + miss])], df["cnt_" + TARGET_TYPE],
-    #                                       ShuffleSplit(n_splits=1, test_size=0.2, random_state=42)).round(2)
     varperf_cate = df[np.append(cate, ["MISS_" + miss])].swifter.apply(lambda x: (
         up.variable_performance(x, df["cnt_" + TARGET_TYPE],
                                 splitter=ShuffleSplit(n_splits=1, test_size=0.2, random_state=42),
@@ -321,11 +304,14 @@ for TARGET_TYPE in TARGET_TYPES:
 
     # Check
     if plot:
-        distr_cate_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n_cols=3, w=18, h=12)
-                            .plot(features=df[np.append(cate, ["MISS_" + miss])],
-                                  target=df["cnt_" + TARGET_TYPE],
-                                  varimps=varperf_cate.round(2),
-                                  file_path=sett.plotloc + "1__distr_cate__" + TARGET_TYPE + ".pdf"))
+        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_cate__" + TARGET_TYPE + "1.pdf",
+                            l_calls=[(up.plot_feature_target,
+                                      dict(feature=df[feature],
+                                           target=df["cnt_" + TARGET_TYPE],
+                                           title=feature + "(VI: " + format(varperf_cate[feature], "0.2f") + ")",
+                                           smooth=30))
+                                     for feature in np.append(cate, "MISS_" + miss)])
+        
 
 
 # --- Removing variables -----------------------------------------------------------------------------------------------
@@ -335,9 +321,15 @@ cate = up.diff(cate, ["xxx"])
 toomany = up.diff(toomany, ["xxx"])
 
 # Remove highly/perfectly (>=99%) correlated (the ones with less levels!)
-corr_cate_plot = (hms_plot.CorrelationPlotter(cutoff=0, w=8, h=6)
-                  .plot(features=df[np.append(cate, ["MISS_" + miss])],
-                        file_path=sett.plotloc + "1__corr_cate.pdf"))
+_ = up.plot_l_calls(pdf_path=sett.plotloc + "1__corr_cate1.pdf", n_rows=1, n_cols=1, figsize=(8, 6),
+                    l_calls=[(up.plot_corr,
+                              dict(df=df[np.append(cate, "MISS_" + miss)], method="cramersv", cutoff=0))])
+'''
+_ = up.plot_l_calls(pdf_path=sett.plotloc + "1__corr.pdf", n_rows=1, n_cols=1, figsize=(8, 6),
+                    l_calls=[(up.plot_corr,
+                              dict(df=df[np.concatenate([cate, "MISS_" + miss, nume + "_BINNED"])], 
+                                   method="cramersv", cutoff=0))])
+'''
 
 
 # --- Time/fold depedency ----------------------------------------------------------------------------------------------
@@ -353,12 +345,13 @@ varperf_cate_fold = df[np.append(cate, ["MISS_" + miss])].swifter.apply(lambda x
 cate_toprint = varperf_cate_fold[varperf_cate_fold > 0.52].index.values
 if len(nume_toprint):
     if plot:
-        distr_cate_folddep_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n_cols=3, w=18, h=12)
-                                    .plot(features=df[cate_toprint],
-                                          target=df["fold"],
-                                          varimps=varperf_cate_fold,
-                                          file_path=sett.plotloc + "1__distr_cate_folddep.pdf"))
-
+        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_cate_folddep" + TARGET_TYPE + "1.pdf",
+                            l_calls=[(up.plot_feature_target,
+                                      dict(feature=df[feature],
+                                           target=df["fold"],
+                                           title=feature + "(VI: " + format(varperf_cate_fold[feature], "0.2f") + ")",
+                                           smooth=30))
+                                     for feature in cate_toprint])
 
 
 ########################################################################################################################
