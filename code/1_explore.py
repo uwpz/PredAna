@@ -73,6 +73,7 @@ df_orig["cnt_MULTICLASS"] = pd.qcut(df_orig["cnt"], q=[0, 0.8, 0.95, 1],
                                     labels=["0_low", "1_high", "2_very_high"]).astype("object")
 
 
+
 '''
 # Check some stuff
 df_orig.dtypes
@@ -159,7 +160,7 @@ df[nume].describe()
 start = time.time()
 for TARGET_TYPE in TARGET_TYPES:
     if plot:
-        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume_orig__" + TARGET_TYPE + "1.pdf",
+        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume_orig__" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], target=df["cnt_" + TARGET_TYPE], 
                                            smooth=30)) 
@@ -180,10 +181,10 @@ if len(tolog):
 # --- Final variable information ---------------------------------------------------------------------------------------
 
 for TARGET_TYPE in TARGET_TYPES:
-    #TARGET_TYPE = "REGR"
+    #TARGET_TYPE = "CLASS"
     
     # Univariate variable performances
-    varperf_nume = df[np.append(nume, nume + "_BINNED")].swifter.apply(lambda x: (
+    varperf_nume = df[np.append(nume, nume + "_BINNED")].swifter.progress_bar(False).apply(lambda x: (
         up.variable_performance(x, df["cnt_" + TARGET_TYPE],
                                 splitter=ShuffleSplit(n_splits=1, test_size=0.2, random_state=42),
                                 scorer=up.d_scoring[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" else "auc"])))
@@ -191,7 +192,7 @@ for TARGET_TYPE in TARGET_TYPES:
     
     # Plot
     if plot:
-        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume__" + TARGET_TYPE + "1.pdf", 
+        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume__" + TARGET_TYPE + ".pdf", 
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], target=df["cnt_" + TARGET_TYPE], 
                                            title=feature + "(VI: " + format(varperf_nume[feature], "0.2f") + ")",
@@ -207,7 +208,7 @@ nume = up.diff(nume, remove)
 
 # Remove highly/perfectly (>=98%) correlated (the ones with less NA!)
 df[nume].describe()
-_ = up.plot_l_calls(pdf_path=sett.plotloc + "1__corr_nume1.pdf", n_rows=1, n_cols=1, figsize=(6, 6),
+_ = up.plot_l_calls(pdf_path=sett.plotloc + "1__corr_nume.pdf", n_rows=1, n_cols=1, figsize=(6, 6),
                     l_calls=[(up.plot_corr,
                               dict(df=df[nume], method="spearman", cutoff=0))])
 remove = ["atemp"]
@@ -228,7 +229,7 @@ varperf_nume_fold = df[nume].swifter.apply(lambda x: up.variable_performance(x, 
 nume_toprint = varperf_nume_fold[varperf_nume_fold > 0.53].index.values
 if len(nume_toprint):
     if plot:
-        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume_folddep" + TARGET_TYPE + "1.pdf",
+        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume_folddep" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], target=df["fold"],
                                            title=feature + "(VI: " + format(varperf_nume_fold[feature], "0.2f") + ")",
@@ -304,7 +305,7 @@ for TARGET_TYPE in TARGET_TYPES:
 
     # Check
     if plot:
-        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_cate__" + TARGET_TYPE + "1.pdf",
+        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_cate__" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature],
                                            target=df["cnt_" + TARGET_TYPE],
@@ -321,7 +322,7 @@ cate = up.diff(cate, ["xxx"])
 toomany = up.diff(toomany, ["xxx"])
 
 # Remove highly/perfectly (>=99%) correlated (the ones with less levels!)
-_ = up.plot_l_calls(pdf_path=sett.plotloc + "1__corr_cate1.pdf", n_rows=1, n_cols=1, figsize=(8, 6),
+_ = up.plot_l_calls(pdf_path=sett.plotloc + "1__corr_cate.pdf", n_rows=1, n_cols=1, figsize=(8, 6),
                     l_calls=[(up.plot_corr,
                               dict(df=df[np.append(cate, "MISS_" + miss)], method="cramersv", cutoff=0))])
 '''
@@ -345,7 +346,7 @@ varperf_cate_fold = df[np.append(cate, ["MISS_" + miss])].swifter.apply(lambda x
 cate_toprint = varperf_cate_fold[varperf_cate_fold > 0.52].index.values
 if len(nume_toprint):
     if plot:
-        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_cate_folddep" + TARGET_TYPE + "1.pdf",
+        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_cate_folddep" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature],
                                            target=df["fold"],

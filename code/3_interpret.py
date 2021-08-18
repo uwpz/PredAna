@@ -35,6 +35,7 @@ import settings as sett
 # Main parameter
 TARGET_TYPE = "CLASS"
 target_name = "cnt_" + TARGET_TYPE + "_num"
+target_labels = ["0_low", "1_high", "2_very_high"] if TARGET_TYPE == "MULTICLASS" else None
 metric = "spear" if TARGET_TYPE == "REGR" else "auc"
 scoring = up.d_scoring[TARGET_TYPE]
 id_name = "instant"
@@ -125,9 +126,9 @@ print(pd.DataFrame(yhat_test).describe())
 
 # Plot performance
 if plot:
-    d_calls = up.get_plotcalls_model_performance(y=df_test[target_name], yhat=yhat_test)
-    up.plot_l_calls(l_calls=d_calls.values(), n_cols=3, n_rows=2, 
-                    pdf_path=sett.plotloc + "3__performance__" + TARGET_TYPE + ".pdf")
+    d_calls = up.get_plotcalls_model_performance(y=df_test[target_name], yhat=yhat_test, target_labels=target_labels)
+    _ = up.plot_l_calls(l_calls=d_calls.values(), n_cols=3, n_rows=2, 
+                        pdf_path=sett.plotloc + "3__performance__" + TARGET_TYPE + ".pdf")
 
 # Check performance for crossvalidated fits
 d_cv = cross_validate(model, df_traintest[features], df_traintest[target_name],
@@ -164,10 +165,11 @@ if TARGET_TYPE in ["CLASS", "MULTICLASS"]:
 else:
     yhat_top = model_top.predict(df_test[features_top_train])
     print(up.spear(df_test[target_name].values, yhat_top))
-if plot:
-    d_calls = up.get_plotcalls_model_performance(y=df_test[target_name], yhat=yhat_top)
-    up.plot_l_calls(l_calls=d_calls.values(),
-                    pdf_path=sett.plotloc + "3__performance_top__" + TARGET_TYPE + ".pdf")
+if TARGET_TYPE != "MULTICLASS":
+    if plot:
+        d_calls = up.get_plotcalls_model_performance(y=df_test[target_name], yhat=yhat_top)
+        _ = up.plot_l_calls(l_calls=d_calls.values(), n_cols=3, n_rows=2,
+                            pdf_path=sett.plotloc + "3__performance_top__" + TARGET_TYPE + ".pdf")
 
 
 ########################################################################################################################
@@ -187,20 +189,23 @@ df_test["residual"].describe()
 
 # For non-regr tasks one might want to plot it for each target level (df_test.query("target == 0/1"))
 if plot:
-    (hms_plot.MultiFeatureDistributionPlotter(target_limits=None if TARGET_TYPE == "REGR" else (0, 0.5),
-                                              n_rows=2, n_cols=3, w=18, h=12)
-        .plot(features=df_test[features_top_train],
-              target=df_test["residual"],
-              file_path=sett.plotloc + "3__diagnosis_residual__" + TARGET_TYPE + ".pdf"))
+    _ = up.plot_l_calls(pdf_path=sett.plotloc + "3__diagnosis_residual__" + TARGET_TYPE + ".pdf",
+                        n_cols=3, n_rows=2, figsize=(18, 12),
+                        l_calls=[(up.plot_feature_target,
+                                  dict(feature=df_test[feature], target=df_test["residual"],
+                                       add_miss_info=False, color=sett.colorblind[3]))
+                                 for feature in up.diff(features_top_train, "day_of_month_ENCODED")])
+
 
 # Absolute residuals
 if TARGET_TYPE == "REGR":
     if plot:
-        (hms_plot.MultiFeatureDistributionPlotter(target_limits=None, n_rows=2, n_cols=3, w=18, h=12)
-         .plot(features=df_test[features_top_train],
-               target=df_test["abs_residual"],
-               file_path=sett.plotloc + "3__diagnosis_absolute_residual__" + TARGET_TYPE + ".pdf"))
-
+        _ = up.plot_l_calls(pdf_path=sett.plotloc + "3__diagnosis_absolute_residual__" + TARGET_TYPE + ".pdf",
+                            n_cols=3, n_rows=2, figsize=(18, 12),
+                            l_calls=[(up.plot_feature_target,
+                                      dict(feature=df_test[feature], target=df_test["abs_residual"],
+                                           add_miss_info=False, color=sett.colorblind[3]))
+                                     for feature in up.diff(features_top_train, "day_of_month_ENCODED")])
 
 ########################################################################################################################
 # Variable Importance
@@ -208,7 +213,7 @@ if TARGET_TYPE == "REGR":
 
 # --- Default Variable Importance: uses gain sum of all trees ----------------------------------------------------------
 
-xgb.plot_importance(model[1].estimator if type(model[1]) == up.ScalingEstimator else model[1])
+xgb.plot_importance(model[1].subestimator if type(model[1]) == up.ScalingEstimator else model[1])
 
 
 # --- Variable Importance by permuation argument ----------------------------------------------------------------------
@@ -253,8 +258,9 @@ l_calls = [(up.plot_variable_importance,
                  max_score_diff=df_varimp_plot["score_diff"][0].round(2),
                  category=df_varimp_plot["category"]))]
 if plot:
-    up.plot_l_calls(l_calls, n_row=1, n_col=1, figsize=(8, 4), 
-                           pdf_path=sett.plotloc + "3__vi__" + TARGET_TYPE + ".pdf")
+    _ = up.plot_l_calls(l_calls, 
+                    pdf_path=sett.plotloc + "3__vi__" + TARGET_TYPE + ".pdf",
+                    n_rows=1, n_cols=1, figsize=(8, 4))
 
 
 ########################################################################################################################
@@ -307,16 +313,16 @@ for i, feature in enumerate(list(d_pd.keys())):
                          yhat_err=d_pd_err[feature].iloc[:, i_col[TARGET_TYPE]].values,
                          feature_ref=df_test[feature],
                          refline=yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR" else yhat_test.mean(),
-                         ylim=None, color=up.colorblind[i_col[TARGET_TYPE]])))
+                         ylim=None, color=sett.colorblind[i_col[TARGET_TYPE]])))
 if plot:
     up.plot_l_calls(l_calls, pdf_path=sett.plotloc + "3__pd__" + TARGET_TYPE + ".pdf")
-    
+
 
 '''
 # --- Shap based PD --------------------------------------------------------------------------------------------------
 
 # Get shap for test data
-explainer = shap.TreeExplainer(model[1].estimator if type(model[1]) is up.ScalingEstimator else model[1])
+explainer = shap.TreeExplainer(model[1].subestimator if type(model[1]) is up.ScalingEstimator else model[1])
 shap_values = up.agg_shap_values(explainer(model[0].transform(X=df_test[features])),
                                  df_test[features],
                                  len_nume=len(nume), l_map_onehot=model[0].transformers_[1][1].categories_,
@@ -368,7 +374,7 @@ y_explain = df_explain[target_name]
 yhat_explain = yhat_test[i_explain]
 
 # Get shap
-explainer = shap.TreeExplainer(model[1].estimator if type(model[1]) == up.ScalingEstimator else model[1])
+explainer = shap.TreeExplainer(model[1].subestimator if type(model[1]) == up.ScalingEstimator else model[1])
 shap_values = explainer(model[0].transform(X=df_explain[features]))
 shap_values = up.agg_shap_values(explainer(model[0].transform(X=df_explain[features])),
                                  df_explain[features],
@@ -436,3 +442,5 @@ if plot:
 # TODO
 
 plt.close("all")
+
+# %%
