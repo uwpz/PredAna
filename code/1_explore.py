@@ -195,7 +195,7 @@ for TARGET_TYPE in TARGET_TYPES:
         _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume__" + TARGET_TYPE + ".pdf", 
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], target=df["cnt_" + TARGET_TYPE], 
-                                           title=feature + "(VI: " + format(varperf_nume[feature], "0.2f") + ")",
+                                           title=feature + " (VI: " + format(varperf_nume[feature], "0.2f") + ")",
                                            smooth=30)) 
                                      for feature in np.column_stack((nume, nume + "_BINNED")).ravel()])
 
@@ -232,7 +232,7 @@ if len(nume_toprint):
         _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume_folddep" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], target=df["fold"],
-                                           title=feature + "(VI: " + format(varperf_nume_fold[feature], "0.2f") + ")",
+                                           title=feature + " (VI: " + format(varperf_nume_fold[feature], "0.2f") + ")",
                                            smooth=30))
                                      for feature in nume_toprint])
 
@@ -309,7 +309,7 @@ for TARGET_TYPE in TARGET_TYPES:
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature],
                                            target=df["cnt_" + TARGET_TYPE],
-                                           title=feature + "(VI: " + format(varperf_cate[feature], "0.2f") + ")",
+                                           title=feature + " (VI: " + format(varperf_cate[feature], "0.2f") + ")",
                                            smooth=30))
                                      for feature in np.append(cate, "MISS_" + miss)])
         
@@ -350,7 +350,7 @@ if len(nume_toprint):
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature],
                                            target=df["fold"],
-                                           title=feature + "(VI: " + format(varperf_cate_fold[feature], "0.2f") + ")",
+                                           title=feature + " (VI: " + format(varperf_cate_fold[feature], "0.2f") + ")",
                                            smooth=30))
                                      for feature in cate_toprint])
 

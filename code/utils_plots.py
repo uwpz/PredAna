@@ -706,7 +706,7 @@ def plot_nume_REGR(ax,
                    feature, target,
                    feature_name=None, target_name=None,
                    feature_lim=None, target_lim=None,
-                   regplot=True, smooth=0.5,
+                   regplot=True, smooth=1,
                    refline=True,
                    title=None,
                    add_miss_info=True,
@@ -906,7 +906,7 @@ def plot_feature_target(ax,
                         target_category=None,
                         feature_lim=None, target_lim=None,
                         min_width=0.2, inset_size=0.2, refline=True, n_bins=20,
-                        regplot=True, smooth=0.5, add_colorbar=True,
+                        regplot=True, smooth=1, add_colorbar=True,
                         add_feature_distribution=True, add_target_distribution=True, add_boxplot=True,
                         title=None,
                         add_miss_info=True,
@@ -1120,13 +1120,17 @@ class GridSearchCV_xlgb(GridSearchCV):
                 fit_time = time.time() - start
                 
                 # Score with all n_estimators
+                if hasattr(self.estimator, "subestimator"):
+                    estimator = self.estimator.subestimator
+                else:
+                    estimator = self.estimator                
                 for ntree_limit in n_estimators:
                     start = time.time()
-                    if isinstance(self.estimator, lgbm.sklearn.LGBMClassifier):
+                    if isinstance(estimator, lgbm.sklearn.LGBMClassifier):
                         yhat_test = fit.predict_proba(_safe_indexing(X, i_test), num_iteration=ntree_limit)
-                    elif isinstance(self.estimator, lgbm.sklearn.LGBMRegressor):
+                    elif isinstance(estimator, lgbm.sklearn.LGBMRegressor):
                         yhat_test = fit.predict(_safe_indexing(X, i_test), num_iteration=ntree_limit)
-                    elif isinstance(self.estimator, xgb.sklearn.XGBClassifier):
+                    elif isinstance(estimator, xgb.sklearn.XGBClassifier):
                         yhat_test = fit.predict_proba(_safe_indexing(X, i_test), ntree_limit=ntree_limit)
                     else:
                         yhat_test = fit.predict(_safe_indexing(X, i_test), ntree_limit=ntree_limit)
@@ -1134,11 +1138,11 @@ class GridSearchCV_xlgb(GridSearchCV):
 
                     # Do it for training as well
                     if self.return_train_score:
-                        if isinstance(self.estimator, lgbm.sklearn.LGBMClassifier):
+                        if isinstance(estimator, lgbm.sklearn.LGBMClassifier):
                             yhat_train = fit.predict_proba(_safe_indexing(X, i_train), num_iteration=ntree_limit)
-                        elif isinstance(self.estimator, lgbm.sklearn.LGBMRegressor):
+                        elif isinstance(estimator, lgbm.sklearn.LGBMRegressor):
                             yhat_train = fit.predict(_safe_indexing(X, i_train), num_iteration=ntree_limit)
-                        elif isinstance(self.estimator, xgb.sklearn.XGBClassifier):
+                        elif isinstance(estimator, xgb.sklearn.XGBClassifier):
                             yhat_train = fit.predict_proba(_safe_indexing(X, i_train), ntree_limit=ntree_limit)
                         else:
                             yhat_train = fit.predict(_safe_indexing(X, i_train), ntree_limit=ntree_limit)
@@ -1335,7 +1339,6 @@ def plot_learningcurve(ax, n_train, score_train, score_test, time_train,
     ax.set_title("Learning curve")
 
 
-
 ########################################################################################################################
 # Interpret
 #######################################################################################################################
@@ -1360,25 +1363,31 @@ def scale_predictions(yhat, b_sample=None, b_all=None):
 
 # Metaestimator which rescales the predictions
 class ScalingEstimator(BaseEstimator):
-    def __init__(self, subestimator=None, b_sample=None, b_all=None):
+    def __init__(self, subestimator=None, b_sample=None, b_all=None, **kwargs):
         self.subestimator = subestimator
         self.b_sample = b_sample
         self.b_all = b_all
         self._estimator_type = subestimator._estimator_type
+        if kwargs:
+            self.subestimator.set_params(**kwargs)
         
-    def get_params(self, **kwargs):
-        return {"subestimator": self.subestimator,
-                "b_sample": self.b_sample,
-                "b_all": self.b_all}
+    def get_params(self, deep=True):
+        return dict(subestimator=self.subestimator,
+                    b_sample=self.b_sample,
+                    b_all=self.b_all,
+                    **self.subestimator.get_params())
 
-    def set_params(self, subestimator=None, b_sample=None, b_all=None, **kwargs):
-        if subestimator is not None:
-            self.subestimator = subestimator
-        self.subestimator = self.subestimator.set_params(**kwargs)
-        if b_sample is not None:
-            self.b_sample = b_sample
-        if b_all is not None:
-            self.b_all = b_all
+    def set_params(self, **params):
+        if "subestimator" in params:
+            self.subestimator = params["subestimator"]
+            del params["subestimator"]
+        if "b_sample" in params:
+            self.b_sample = params["b_sample"]
+            del params["b_sample"]
+        if "b_all" in params:
+            self.b_all = params["b_all"]
+            del params["b_all"]
+        self.subestimator = self.subestimator.set_params(**params)
         return self
 
     def fit(self, X, y, *args, **kwargs):
@@ -1393,6 +1402,7 @@ class ScalingEstimator(BaseEstimator):
         yhat = scale_predictions(self.subestimator.predict_proba(X, *args, **kwargs),
                                  self.b_sample, self.b_all)
         return yhat
+
 
 # Alternative to above with explicit classifier
 class XGBClassifier_rescale(xgb.XGBClassifier):
@@ -1409,42 +1419,56 @@ class XGBClassifier_rescale(xgb.XGBClassifier):
 
 # Metaestimator which undersamples before training and resclaes the predictions accordingly
 class UndersampleEstimator(BaseEstimator):
-    def __init__(self, subestimator=None, n_max_per_level=np.inf, seed=42):
+    def __init__(self, subestimator=None, n_max_per_level=np.inf, seed=42, **kwargs):
         self.subestimator = subestimator
         self.n_max_per_level = n_max_per_level
         self.seed = seed
         self._estimator_type = subestimator._estimator_type
+        if kwargs:
+            self.subestimator.set_params(**kwargs)
         
-    def get_params(self, **kwargs):
-        return {"subestimator": self.subestimator,
-                "n_max_per_level": self.n_max_per_level,
-                "seed": self.seed}
+    def get_params(self, deep=True):
+        return dict(subestimator=self.subestimator,
+                    n_max_per_level=self.n_max_per_level,
+                    seed=self.seed,
+                    **self.subestimator.get_params())
 
-    def set_params(self, subestimator=None, n_max_per_level=None, seed=None, **kwargs):
-        if subestimator is not None:
-            self.subestimator = subestimator
-        self.subestimator = self.subestimator.set_params(**kwargs)
-        self.n_max_per_level = n_max_per_level
-        self.seed = seed
+    def set_params(self, **params):
+        if "subestimator" in params:
+            self.subestimator = params["subestimator"]
+            del params["subestimator"]
+        if "n_max_per_level" in params:
+            self.b_sample = params["n_max_per_level"]
+            del params["n_max_per_level"]
+        if "seed" in params:
+            self.b_all = params["seed"]
+            del params["seed"]
+        self.subestimator = self.subestimator.set_params(**params)
         return self
 
     def fit(self, X, y, *args, **kwargs):
-        self.classes_ = unique_labels(y)
         
         # Sample and set b_sample_, b_all_
-        df_tmp = pd.DataFrame(X).assign(y=y)
-        self.b_all_ = df_tmp["y"].value_counts().values / len(df_tmp)
-        df_tmp = (df_tmp.groupby("y").apply(lambda x: x.sample(min(n_max_per_level, x.shape[0]),
-                                                               random_state=self.seed)))
-        self.b_sample_ = df_tmp["y"].value_counts().values / len(df_tmp)
+        if type_of_target(y) == "continuous":
+            df_tmp = (pd.DataFrame(dict(y=y)).reset_index(drop=True).reset_index()
+                      .pipe(lambda x: x.sample(min(self.n_max_per_level, x.shape[0]))))
+        else:
+            self.classes_ = unique_labels(y)       
+            df_tmp = pd.DataFrame(dict(y=y)).reset_index(drop=True).reset_index()
+            self.b_all_ = df_tmp["y"].value_counts().values / len(df_tmp)
+            df_tmp = (df_tmp.groupby("y")
+                      .apply(lambda x: x.sample(min(self.n_max_per_level, x.shape[0]), random_state=self.seed))
+                      .reset_index(drop=True))
+            self.b_sample_ = df_tmp["y"].value_counts().values / len(df_tmp)
         y_under = df_tmp["y"].values
-        X_under = df_tmp.drop(columns="y").values
+        X_under = X[df_tmp["index"].values, :]
 
         # Fit
         self.subestimator.fit(X_under, y_under, *args, **kwargs)
         return self
 
     def predict(self, X, *args, **kwargs):
+        print("")
         return self.subestimator.predict(X, *args, **kwargs)
 
     def predict_proba(self, X, *args, **kwargs):
@@ -1460,16 +1484,22 @@ class LogtrafoEstimator(BaseEstimator):
         self.subestimator = self.subestimator.set_params(**kwargs)
         self.variance_scaling_factor = variance_scaling_factor
         self._estimator_type = subestimator._estimator_type
+        if kwargs:
+            self.subestimator.set_params(**kwargs)
 
-    def get_params(self, **kwargs):
-        return {"subestimator": self.subestimator,
-                "variance_scaling_factor": self.variance_scaling_factor}
+    def get_params(self, deep=True):
+        return dict(subestimator=self.subestimator,
+                    variance_scaling_factor=self.variance_scaling_factor,
+                    **self.subestimator.get_params())
 
-    def set_params(self, subestimator=None, variance_scaling_factor=1, **kwargs):
-        if subestimator is not None:
-            self.subestimator = subestimator
-        self.subestimator = self.subestimator.set_params(**kwargs)
-        self.variance_scaling_factor = variance_scaling_factor
+    def set_params(self, **params):
+        if "subestimator" in params:
+            self.subestimator = params["subestimator"]
+            del params["subestimator"]
+        if "variance_scaling_factor" in params:
+            self.b_sample = params["variance_scaling_factor"]
+            del params["variance_scaling_factor"]
+        self.subestimator = self.subestimator.set_params(**params)
         return self
 
     def fit(self, X, y, *args, **kwargs):
@@ -1542,10 +1572,10 @@ def partial_dependence(estimator, df, features,
         for value in values:
             df_copy[feature] = value
             df_return = df_return.append(
-                pd.DataFrame(np.mean(estimator.predict_proba(df_copy) if hasattr(estimator, "predict_proba") else
+                pd.DataFrame(np.mean(estimator.predict_proba(df_copy) if estimator._estimator_type == "classifier" else
                                      estimator.predict(df_copy), axis=0).reshape(1, -1)))
         # yhat_pd = np.append(yhat_pd,
-        #                     np.mean(estimator.predict_proba(df_pd) if hasattr(estimator, "predict_proba") else
+        #                     np.mean(estimator.predict_proba(df_pd) if estimator._estimator_type == "classifier" else
         #                             estimator.predict(df_pd), axis=0).reshape(1, -1), axis=0)
         df_return.columns = ["yhat"] if estimator._estimator_type == "regressor" else estimator.classes_
         df_return["value"] = values
