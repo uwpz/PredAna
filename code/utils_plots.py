@@ -381,12 +381,14 @@ def helper_adapt_feature_target(feature, target, feature_name, target_name):
         feature = pd.Series(feature)
         feature.name = feature_name if feature_name is not None else "x"
     if feature_name is not None:
+        feature = feature.copy()
         feature.name = feature_name
     if not isinstance(target, pd.Series):
         target = pd.Series(target)
         target.name = target_name if target_name is not None else "y"
     if target_name is not None:
-        feature.name = feature_name
+        target = target.copy()
+        target.name = target_name
 
     print("Plotting " + feature.name + " vs. " + target.name)
 
@@ -657,7 +659,8 @@ def plot_nume_CLASS(ax,
     color = color[:target.nunique()]
 
     # Distribution plot
-    sns.histplot(ax=ax, x=feature, hue=target, stat="density", common_norm=False, kde=True, bins=n_bins,
+    sns.histplot(ax=ax, x=feature, hue=target, hue_order=np.sort(target.unique()),
+                 stat="density", common_norm=False, kde=True, bins=n_bins,
                  palette=color)
     ax.set_ylabel("Density")
     ax.set_title(title)
