@@ -222,6 +222,16 @@ def value_counts(df, topn=5, dtypes=["object"]):
                      axis=1).fillna("")
 
 
+# Binning with correct label
+def bin(feature, n_bins=5, precision=3):
+    feature_binned = pd.qcut(feature, n_bins, duplicates="drop", precision=precision)
+    feature_binned = ("q" + feature_binned.cat.codes.astype("str") + " " +
+                      feature_binned.astype("str").str.replace("\(" + str(feature_binned.cat.categories[0].left),
+                                                                "[" + str(pd.Series(feature).min()
+                                                                          .round(precision))))
+    return feature_binned
+
+
 # Univariate model performance
 def variable_performance(feature, target, scorer, target_type=None, splitter=KFold(5), groups=None):
     """
@@ -259,9 +269,9 @@ def variable_performance(feature, target, scorer, target_type=None, splitter=KFo
         target_type = dict(continuous="REGR", binary="CLASS",
                            multiclass="MULTICLASS")[type_of_target(df_hlp["target"])]
     numeric_feature = pd.api.types.is_numeric_dtype(df_hlp["feature"])
-    print("Calculate univariate performance for ", 
+    print("Calculate univariate performance for", 
           "numeric" if numeric_feature else "categorical",
-          " feature '" + feature.name + "' for " + target_type + " target '" + target.name + "'")
+          "feature '" + feature.name + "' for " + target_type + " target '" + target.name + "'")
 
     # Calc performance
     perf = np.mean(cross_val_score(
@@ -709,7 +719,7 @@ def plot_nume_REGR(ax,
                    feature, target,
                    feature_name=None, target_name=None,
                    feature_lim=None, target_lim=None,
-                   regplot=True, smooth=1,
+                   regplot=True, regplot_type="spline", smooth=1,
                    refline=True,
                    title=None,
                    add_miss_info=True,
@@ -747,8 +757,10 @@ def plot_nume_REGR(ax,
 
     # Spline
     if regplot:
-        if len(feature) < 1000:
-            sns.regplot(x=feature, y=target, lowess=True, scatter=False, color="black", ax=ax)
+        if regplot_type in ["lowess", "linear"]:
+            sns.regplot(x=feature, y=target,
+                        lowess=True if regplot_type == "lowess" else False,
+                        scatter=False, color="black", ax=ax)
         else:
             df_spline = (pd.DataFrame({"x": feature, "y": target})
                          .groupby("x")[["y"]].agg(["mean", "count"])
@@ -909,7 +921,7 @@ def plot_feature_target(ax,
                         target_category=None,
                         feature_lim=None, target_lim=None,
                         min_width=0.2, inset_size=0.2, refline=True, n_bins=20,
-                        regplot=True, smooth=1, add_colorbar=True,
+                        regplot=True, regplot_type="spline", smooth=1, add_colorbar=True,
                         add_feature_distribution=True, add_target_distribution=True, add_boxplot=True,
                         title=None,
                         add_miss_info=True,
@@ -929,7 +941,7 @@ def plot_feature_target(ax,
                   target_category=target_category,
                   feature_lim=feature_lim, target_lim=target_lim,
                   min_width=min_width, inset_size=inset_size, refline=refline, n_bins=n_bins,
-                  regplot=regplot, smooth=smooth, add_colorbar=add_colorbar,
+                  regplot=regplot, regplot_type=regplot_type, smooth=smooth, add_colorbar=add_colorbar,
                   add_feature_distribution=add_feature_distribution, add_target_distribution=add_target_distribution,
                   add_boxplot=add_boxplot,
                   title=title,

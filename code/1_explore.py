@@ -135,8 +135,10 @@ df[nume].describe()
 
 # --- Create nominal variables for all numeric variables (for linear models)  -----------------------------------------
 
-df[nume + "_BINNED"] = (df[nume].swifter.apply(lambda x: (pd.qcut(x, 5)))
-                        .apply(lambda x: (("q" + x.cat.codes.astype("str") + " " + x.astype("str")))))
+#df[nume + "_BINNED"] = (df[nume].swifter.apply(lambda x: (pd.qcut(x, 5)))
+#                        .apply(lambda x: (("q" + x.cat.codes.astype("str") + " " + x.astype("str")))))
+df[nume + "_BINNED"] = df[nume].apply(lambda x: up.bin(x, precision=1))
+
 
 # Convert missings to own level ("(Missing)")
 df[nume + "_BINNED"] = df[nume + "_BINNED"].fillna("(Missing)")
