@@ -34,7 +34,6 @@ from itertools import product  # for GridSearchCV_xlgb
 from scipy.interpolate import splev, splrep
 from scipy.cluster.hierarchy import linkage
 from pycorrcat.pycorrcat import corr as corrcat
-from patsy import cr
 
 
 ########################################################################################################################
@@ -775,9 +774,12 @@ def plot_nume_REGR(ax,
             x2 = np.quantile(df_spline["x"].values, np.arange(0.01, 1, 0.01))
             y2 = splev(x2, spl)
             ax.plot(x2, y2, color="black")
+            
             '''
+            from patsy import cr, bs
             df_spline = pd.DataFrame({"x": feature, "y": target}).sort_values("x")
             spline_basis = cr(df_spline["x"], df=7, constraints='center')
+            spline_basis = bs(df_spline["x"], df=4, include_intercept=True)
             df_spline["y_spline"] = LinearRegression().fit(spline_basis, target).predict(spline_basis)
             ax.plot(df_spline["x"], df_spline["y_spline"], color="red") 
             
