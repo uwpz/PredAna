@@ -18,7 +18,7 @@ import time
 from sklearn.metrics import (make_scorer, roc_auc_score, accuracy_score, roc_curve, confusion_matrix,
                              precision_recall_curve, average_precision_score)
 from sklearn.model_selection import cross_val_score, GridSearchCV, check_cv, KFold
-from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.linear_model import LinearRegression, LogisticRegression, LinearRegression
 from sklearn.preprocessing import OneHotEncoder, KBinsDiscretizer, MinMaxScaler
 from sklearn.utils.multiclass import type_of_target, unique_labels
 from sklearn.utils import _safe_indexing
@@ -34,6 +34,7 @@ from itertools import product  # for GridSearchCV_xlgb
 from scipy.interpolate import splev, splrep
 from scipy.cluster.hierarchy import linkage
 from pycorrcat.pycorrcat import corr as corrcat
+from patsy import cr
 
 
 ########################################################################################################################
@@ -774,6 +775,17 @@ def plot_nume_REGR(ax,
             x2 = np.quantile(df_spline["x"].values, np.arange(0.01, 1, 0.01))
             y2 = splev(x2, spl)
             ax.plot(x2, y2, color="black")
+            '''
+            df_spline = pd.DataFrame({"x": feature, "y": target}).sort_values("x")
+            spline_basis = cr(df_spline["x"], df=7, constraints='center')
+            df_spline["y_spline"] = LinearRegression().fit(spline_basis, target).predict(spline_basis)
+            ax.plot(df_spline["x"], df_spline["y_spline"], color="red") 
+            
+            sns.regplot(x=feature, y=target,
+                        lowess=True,
+                        scatter=False, color="green", ax=ax)
+            '''
+                        
     if add_miss_info:
         ax.set_xlabel(ax.get_xlabel() + " (" + format(pct_miss_feature, "0.1f") + "% NA)")
     if title is not None:
