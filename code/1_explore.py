@@ -50,7 +50,11 @@ TARGET_TYPES = ["REGR", "CLASS", "MULTICLASS"]
 df_orig = (pd.read_csv(sett.dataloc + "hour.csv", parse_dates=["dteday"])
            .replace({"season": {1: "1_winter", 2: "2_spring", 3: "3_summer", 4: "4_fall"},
                      "yr": {0: "2011", 1: "2012"},
+<<<<<<< HEAD
                      #"holiday": {0: "No", 1: "Yes"},
+=======
+                     "holiday": {0: "No", 1: "Yes"}, #alhg
+>>>>>>> f59d033... wip
                      "workingday": {0: "No", 1: "Yes"},
                      "weathersit": {1: "1_clear", 2: "2_misty", 3: "3_light rain", 4: "4_heavy rain"}})
            .assign(weekday=lambda x: x["weekday"].astype("str") + "_" + x["dteday"].dt.day_name().str.slice(0, 3),
