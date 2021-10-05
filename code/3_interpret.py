@@ -385,11 +385,14 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
     # Get shap
     explainer = shap.TreeExplainer(model[1].subestimator if hasattr(model[1], "subestimator") else model[1])
-    shap_values = explainer(model[0].transform(X=df_explain[features]))
+    X_explain = model[0].transform(X=df_explain[features])
+    #if gbm == "lgbm":
+    #    X_explain = X_explain.toarray()
+    shap_values = explainer(X_explain)
     shap_values = up.agg_shap_values(explainer(model[0].transform(X=df_explain[features])),
-                                    df_explain[features],
-                                    len_nume=len(nume), l_map_onehot=model[0].transformers_[1][1].categories_,
-                                    round=2)  # aggregate onehot
+                                     df_explain[features],
+                                     len_nume=len(nume), l_map_onehot=model[0].transformers_[1][1].categories_,
+                                     round=2)  # aggregate onehot
 
     # Rescale due to undersampling
     if TARGET_TYPE == "CLASS":
@@ -406,6 +409,10 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
         print(np.isclose(shaphat, model.predict(df_explain[features])))
     elif TARGET_TYPE == "CLASS":
         print(np.isclose(up.inv_logit(shaphat), model.predict_proba(df_explain[features])[:, 1]))
+    #if gbm == "lgbm":
+    #    print(np.isclose(uu.inv_logit(shaphat)[:, 1], model.predict_proba(df_explain[features])[:, 1]))
+    #else:
+    #    print(np.isclose(uu.inv_logit(shaphat), model.predict_proba(df_explain[features])[:, 1]))
     else:
         print(np.isclose(np.exp(shaphat) / np.exp(shaphat).sum(axis=1, keepdims=True),
                         model.predict_proba(df_explain[features])))
