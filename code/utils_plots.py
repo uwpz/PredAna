@@ -34,6 +34,8 @@ from itertools import product  # for GridSearchCV_xlgb
 from scipy.interpolate import splev, splrep
 from scipy.cluster.hierarchy import linkage
 from pycorrcat.pycorrcat import corr as corrcat
+from statsmodels.nonparametric.smoothers_lowess import lowess
+
 
 
 ########################################################################################################################
@@ -719,7 +721,7 @@ def plot_nume_REGR(ax,
                    feature, target,
                    feature_name=None, target_name=None,
                    feature_lim=None, target_lim=None,
-                   regplot=True, regplot_type="spline", smooth=1,
+                   regplot=True, regplot_type="lowess", lowess_n_sample=1000, lowess_frac=2 / 3, spline_smooth=1,
                    refline=True,
                    title=None,
                    add_miss_info=True,
@@ -757,11 +759,9 @@ def plot_nume_REGR(ax,
 
     # Spline
     if regplot:
-        if regplot_type in ["lowess", "linear"]:
-            sns.regplot(x=feature, y=target,
-                        lowess=True if regplot_type == "lowess" else False,
-                        scatter=False, color="black", ax=ax)
-        else:
+        if regplot_type == "linear":
+            sns.regplot(x=feature, y=target, lowess=False, scatter=False, color="black", ax=ax)
+        elif regplot_type == "spline":
             df_spline = (pd.DataFrame({"x": feature, "y": target})
                          .groupby("x")[["y"]].agg(["mean", "count"])
                          .pipe(lambda x: x.set_axis([a + "_" + b for a, b in x.columns],
@@ -770,7 +770,7 @@ def plot_nume_REGR(ax,
                          .sort_values("x")
                          .reset_index())
             spl = splrep(x=df_spline["x"].values, y=df_spline["y_mean"].values, w=df_spline["w"].values,
-                         s=len(df_spline) * smooth)
+                         s=len(df_spline) * spline_smooth)
             x2 = np.quantile(df_spline["x"].values, np.arange(0.01, 1, 0.01))
             y2 = splev(x2, spl)
             ax.plot(x2, y2, color="black")
@@ -787,6 +787,16 @@ def plot_nume_REGR(ax,
                         lowess=True,
                         scatter=False, color="green", ax=ax)
             '''
+        else:
+            if regplot_type != "lowess":
+                warnings.warn("Wrong regplot_type, used 'lowess'")                
+            df_lowess = (pd.DataFrame({"x": feature, "y": target})
+                         .pipe(lambda x: x.sample(min(lowess_n_sample, x.shape[0]), random_state=42))
+                         .reset_index(drop=True)
+                         .sort_values("x")
+                         .assign(yhat=lambda x: lowess(x["y"], x["x"], frac=lowess_frac,
+                                                       is_sorted=True, return_sorted=False)))
+            ax.plot(df_lowess["x"], df_lowess["yhat"], color="black")
                         
     if add_miss_info:
         ax.set_xlabel(ax.get_xlabel() + " (" + format(pct_miss_feature, "0.1f") + "% NA)")
@@ -935,7 +945,8 @@ def plot_feature_target(ax,
                         target_category=None,
                         feature_lim=None, target_lim=None,
                         min_width=0.2, inset_size=0.2, refline=True, n_bins=20,
-                        regplot=True, regplot_type="spline", smooth=1, add_colorbar=True,
+                        regplot=True, regplot_type="lowess", lowess_n_sample=1000, lowess_frac=2 / 3, spline_smooth=1, 
+                        add_colorbar=True,
                         add_feature_distribution=True, add_target_distribution=True, add_boxplot=True,
                         title=None,
                         add_miss_info=True,
@@ -955,7 +966,9 @@ def plot_feature_target(ax,
                   target_category=target_category,
                   feature_lim=feature_lim, target_lim=target_lim,
                   min_width=min_width, inset_size=inset_size, refline=refline, n_bins=n_bins,
-                  regplot=regplot, regplot_type=regplot_type, smooth=smooth, add_colorbar=add_colorbar,
+                  regplot=regplot, regplot_type=regplot_type,
+                  lowess_n_sample=lowess_n_sample, lowess_frac=lowess_frac, spline_smooth=spline_smooth, 
+                  add_colorbar=add_colorbar,
                   add_feature_distribution=add_feature_distribution, add_target_distribution=add_target_distribution,
                   add_boxplot=add_boxplot,
                   title=title,

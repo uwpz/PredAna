@@ -34,7 +34,7 @@ import settings as sett
 # --- Parameter --------------------------------------------------------------------------
 for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     # Main parameter
-    #TARGET_TYPE = "REGR"
+    #TARGET_TYPE = "CLASS"
     target_name = "cnt_" + TARGET_TYPE + "_num"
     target_labels = ["0_low", "1_high", "2_very_high"] if TARGET_TYPE == "MULTICLASS" else None
     metric = "spear" if TARGET_TYPE == "REGR" else "auc"

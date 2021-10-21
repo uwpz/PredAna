@@ -50,11 +50,7 @@ TARGET_TYPES = ["REGR", "CLASS", "MULTICLASS"]
 df_orig = (pd.read_csv(sett.dataloc + "hour.csv", parse_dates=["dteday"])
            .replace({"season": {1: "1_winter", 2: "2_spring", 3: "3_summer", 4: "4_fall"},
                      "yr": {0: "2011", 1: "2012"},
-<<<<<<< HEAD
-                     #"holiday": {0: "No", 1: "Yes"},
-=======
-                     "holiday": {0: "No", 1: "Yes"}, #alhg
->>>>>>> f59d033... wip
+                     "holiday": {0: "No", 1: "Yes"},
                      "workingday": {0: "No", 1: "Yes"},
                      "weathersit": {1: "1_clear", 2: "2_misty", 3: "3_light rain", 4: "4_heavy rain"}})
            .assign(weekday=lambda x: x["weekday"].astype("str") + "_" + x["dteday"].dt.day_name().str.slice(0, 3),
@@ -75,8 +71,6 @@ df_orig["cnt_REGR"] = np.log(df_orig["cnt"] + 1)
 df_orig["cnt_CLASS"] = pd.qcut(df_orig["cnt"], q=[0, 0.8, 1], labels=["0_low", "1_high"]).astype("object")
 df_orig["cnt_MULTICLASS"] = pd.qcut(df_orig["cnt"], q=[0, 0.8, 0.95, 1],
                                     labels=["0_low", "1_high", "2_very_high"]).astype("object")
-
-
 
 '''
 # Check some stuff
@@ -187,7 +181,7 @@ if len(tolog):
 # --- Final variable information ---------------------------------------------------------------------------------------
 
 for TARGET_TYPE in TARGET_TYPES:
-    #TARGET_TYPE = "CLASS"
+    #TARGET_TYPE = "REGR"
     
     # Univariate variable performances
     varperf_nume = df[np.append(nume, nume + "_BINNED")].swifter.progress_bar(False).apply(lambda x: (
@@ -198,11 +192,11 @@ for TARGET_TYPE in TARGET_TYPES:
     
     # Plot
     if plot:
-        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume__" + TARGET_TYPE + ".pdf", 
+        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume__" + TARGET_TYPE + "3.pdf", 
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], target=df["cnt_" + TARGET_TYPE], 
                                            title=feature + " (VI: " + format(varperf_nume[feature], "0.2f") + ")",
-                                           smooth=30)) 
+                                           regplot_type="lowess")) 
                                      for feature in np.column_stack((nume, nume + "_BINNED")).ravel()])
 
 
