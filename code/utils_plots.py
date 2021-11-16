@@ -684,7 +684,7 @@ def plot_nume_CLASS(ax,
     inset_ax.set_axis_off()
     ax.axhline(ylim[0], color="black")
     ax.get_shared_x_axes().join(ax, inset_ax)
-    sns.boxplot(ax=inset_ax, x=feature, y=target, orient="h", palette=color,
+    sns.boxplot(ax=inset_ax, x=feature, y=target, order=np.sort(target.unique()), orient="h", palette=color,
                 showmeans=True, meanprops={"marker": "x", "markerfacecolor": "black", "markeredgecolor": "black"})
     _ = ax.set_yticks(yticks[(yticks >= ylim[0]) & (yticks <= ylim[1])])
 
@@ -1020,8 +1020,9 @@ def plot_corr(ax, df, method, absolute=True, cutoff=None, n_jobs=1):
         df_corr = df_corr.abs()
 
     # Filter out rows or cols below cutoff and then fill diagonal
+    np.fill_diagonal(df_corr.values, 0)
     if cutoff is not None:
-        i_cutoff = (df_corr.max(axis=1) > cutoff).values
+        i_cutoff = (df_corr.abs().max(axis=1) > cutoff).values
         df_corr = df_corr.loc[i_cutoff, i_cutoff]
     np.fill_diagonal(df_corr.values, 1)
 

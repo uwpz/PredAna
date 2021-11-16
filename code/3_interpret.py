@@ -32,6 +32,7 @@ import settings as sett
 
 
 # --- Parameter --------------------------------------------------------------------------
+
 for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     # Main parameter
     #TARGET_TYPE = "REGR"
