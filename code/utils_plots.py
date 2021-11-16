@@ -77,7 +77,7 @@ def show_figure(fig):
 
 
 # Plot list of tuples (plot_call, kwargs)
-def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None):
+def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None, constrained_layout=False):
 
     # Open pdf
     if pdf_path is not None:
@@ -89,15 +89,12 @@ def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None):
     for i, (plot_function, kwargs) in enumerate(l_calls):
         # Init new page
         if i % (n_rows * n_cols) == 0:
-            fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize, constrained_layout=True)
+            fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize, constrained_layout=constrained_layout)
             l_fig.append([(fig, axes)])
             i_ax = 0
 
         # Plot call
         plot_function(ax=axes.flat[i_ax] if (n_rows * n_cols > 1) else axes, **kwargs)
-        # fig.tight_layout()
-        fig.set_constrained_layout_pads(w_pad=4 / 72, h_pad=4 / 72, hspace=0.1,
-                                        wspace=0.1)
         i_ax += 1
 
         # "Close" page
@@ -108,6 +105,10 @@ def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None):
                     axes.flat[k].axis("off")
 
             # Write pdf
+            if constrained_layout:
+                fig.set_constrained_layout_pads(w_pad=4 / 72, h_pad=4 / 72, hspace=0.1, wspace=0.1)
+            else:
+                fig.tight_layout()
             if pdf_path is not None:
                 pdf_pages.savefig(fig, bbox_inches="tight", pad_inches=0.2)
 
@@ -166,7 +167,7 @@ def auc(y_true, y_pred):
         if (np.min(y_pred) < 0) | (np.max(y_pred) > 1):
             y_pred = MinMaxScaler().fit_transform(y_pred.reshape(-1, 1))[:, 0]
     if y_true.ndim == 1:
-        if type_of_target(y_true) == "continous":
+        if type_of_target(y_true) == "continuous":
             if np.max(y_true) > 1:
                 y_true = np.where(y_true > 1, 1, np.where(y_true < 1, 0, y_true))
 
@@ -685,7 +686,7 @@ def plot_nume_CLASS(ax,
     inset_ax.set_axis_off()
     ax.axhline(ylim[0], color="black")
     ax.get_shared_x_axes().join(ax, inset_ax)
-    sns.boxplot(ax=inset_ax, x=feature, y=target, orient="h", palette=color,
+    sns.boxplot(ax=inset_ax, x=feature, y=target, order=np.sort(target.unique()), orient="h", palette=color,
                 showmeans=True, meanprops={"marker": "x", "markerfacecolor": "black", "markeredgecolor": "black"})
     _ = ax.set_yticks(yticks[(yticks >= ylim[0]) & (yticks <= ylim[1])])
 
@@ -1046,8 +1047,9 @@ def plot_corr(ax, df, method, absolute=True, cutoff=None, n_jobs=1):
         df_corr = df_corr.abs()
 
     # Filter out rows or cols below cutoff and then fill diagonal
+    np.fill_diagonal(df_corr.values, 0)
     if cutoff is not None:
-        i_cutoff = (df_corr.max(axis=1) > cutoff).values
+        i_cutoff = (df_corr.abs().max(axis=1) > cutoff).values
         df_corr = df_corr.loc[i_cutoff, i_cutoff]
     np.fill_diagonal(df_corr.values, 1)
 
@@ -1785,8 +1787,8 @@ def plot_calibration(ax, y, yhat, n_bins=5,
     ax.plot([minmin, maxmax], [minmin, maxmax], linestyle="--", color="grey")
     
     # Focus       
-    ax.set_xlim(None, max_yhat)
-    ax.set_ylim(None, max_yhat)
+    ax.set_xlim(None, maxmax + 0.05 * (maxmax - minmin))
+    ax.set_ylim(None, maxmax + 0.05 * (maxmax - minmin))
         
     # Labels
     props = {'xlabel': r"$\bar{\^y}$ in $\^y$-bin",
@@ -2159,7 +2161,7 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
         if feature_ref is not None:
             df_plot = df_plot.merge(helper_calc_barboxwidth(feature_ref, np.tile(1, len(feature_ref)), 
                                                             min_width=min_width),
-                                    how="left")
+                                    how="inner")
             '''
             df_plot = df_plot.merge(pd.DataFrame({feature_name: feature_ref}).assign(count=1)
                                     .groupby(feature_name, as_index=False)[["count"]].sum()
