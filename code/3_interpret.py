@@ -100,7 +100,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     df_train = df.query("fold == 'train'").reset_index(drop=True)
     df_test = df.query("fold == 'test'").reset_index(drop=True)
     algo = up.UndersampleEstimator(xgb.XGBRegressor(**xgb_param) if TARGET_TYPE == "REGR"
-                                else xgb.XGBClassifier(**xgb_param), n_max_per_level=3000)
+                                else xgb.XGBClassifier(**xgb_param), n_max_per_level=2000)
 
 
     # Folds for crossvalidation and check
