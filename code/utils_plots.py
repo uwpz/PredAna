@@ -2083,7 +2083,7 @@ def get_plotcalls_model_performance(y, yhat, target_type=None,
 # Plot permutation base variable importance
 def plot_variable_importance(ax,
                              features, importance,
-                             importance_cum=None, importance_se=None, max_score_diff=None,
+                             importance_cum=None, importance_mean=None, importance_se=None, max_score_diff=None,
                              category=None,
                              category_label="Importance",
                              category_color_palette=sns.xkcd_palette(["blue", "orange", "red"])):
@@ -2098,7 +2098,7 @@ def plot_variable_importance(ax,
         ax.plot(importance_cum, features, color="black", marker="o")
         ax.set_xlabel(ax.get_xlabel() + " /\n" + r"cumulative in % (-$\bullet$-)")
     if importance_se is not None:
-        ax.errorbar(x=importance, y=features, xerr=importance_se,
+        ax.errorbar(x=importance_mean if importance_mean is not None else importance, y=features, xerr=importance_se,
                     linestyle="none", marker="s", fillstyle="none", color="grey")
         ax.set_title(ax.get_title() + r" (incl. SE (-$\boxminus$-))")
 

@@ -244,7 +244,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     # Crossvalidate Importance (only for top features)
     df_varimp_test_cv = pd.DataFrame()
     for i, (i_train, i_test) in enumerate(cv_5foldsep.split(df_traintest, test_fold=(df_traintest["fold"] == "test"))):
-        df_tmp = df_traintest.iloc[i_train, :]
+        df_tmp = df_traintest.iloc[i_test, :]
         df_varimp_test_cv = df_varimp_test_cv.append(
             up.variable_importance(d_cv["estimator"][i], df_tmp[features], df_tmp[target_name], features_top_test,
                                 scoring=scoring[metric],
