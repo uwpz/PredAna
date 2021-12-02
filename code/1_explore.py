@@ -137,7 +137,6 @@ df[nume].describe()
 #                        .apply(lambda x: (("q" + x.cat.codes.astype("str") + " " + x.astype("str")))))
 df[nume + "_BINNED"] = df[nume].apply(lambda x: up.bin(x, precision=1))
 
-
 # Convert missings to own level ("(Missing)")
 df[nume + "_BINNED"] = df[nume + "_BINNED"].fillna("(Missing)")
 print(up.value_counts(df[nume + "_BINNED"], 6))
@@ -162,14 +161,14 @@ for TARGET_TYPE in TARGET_TYPES:
     if plot:
         _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume_orig__" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
-                                      dict(feature=df[feature], target=df["cnt_" + TARGET_TYPE], 
-                                           smooth=30)) 
+                                      dict(feature=df[feature], target=df["cnt_" + TARGET_TYPE],)) 
                                      for feature in nume])        
 print(time.time() - start)
     
 # Winsorize (hint: plot again before deciding for log-trafo)
+#%%
 df[nume] = up.Winsorize(lower_quantile=None, upper_quantile=0.99).fit_transform(df[nume])
-
+#%%
 # Log-Transform
 tolog = np.array([], dtype="object")
 if len(tolog):
@@ -181,7 +180,7 @@ if len(tolog):
 # --- Final variable information ---------------------------------------------------------------------------------------
 
 for TARGET_TYPE in TARGET_TYPES:
-    #TARGET_TYPE = "REGR"
+    #TARGET_TYPE = "CLASS"
     
     # Univariate variable performances
     varperf_nume = df[np.append(nume, nume + "_BINNED")].swifter.progress_bar(False).apply(lambda x: (
@@ -232,8 +231,7 @@ if len(nume_toprint):
         _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume_folddep" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], target=df["fold"],
-                                           title=feature + " (VI: " + format(varperf_nume_fold[feature], "0.2f") + ")",
-                                           smooth=30))
+                                           title=feature + " (VI: " + format(varperf_nume_fold[feature], "0.2f") + ")"))
                                      for feature in nume_toprint])
 
 
@@ -309,8 +307,7 @@ for TARGET_TYPE in TARGET_TYPES:
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature],
                                            target=df["cnt_" + TARGET_TYPE],
-                                           title=feature + " (VI: " + format(varperf_cate[feature], "0.2f") + ")",
-                                           smooth=30))
+                                           title=feature + " (VI: " + format(varperf_cate[feature], "0.2f") + ")"))
                                      for feature in np.append(cate, "MISS_" + miss)])
         
 
@@ -350,8 +347,7 @@ if len(nume_toprint):
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature],
                                            target=df["fold"],
-                                           title=feature + " (VI: " + format(varperf_cate_fold[feature], "0.2f") + ")",
-                                           smooth=30))
+                                           title=feature + " (VI: " + format(varperf_cate_fold[feature], "0.2f") + ")"))
                                      for feature in cate_toprint])
 
 

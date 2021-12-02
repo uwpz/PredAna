@@ -33,7 +33,7 @@ import settings as sett
 
 # --- Parameter --------------------------------------------------------------------------
 
-for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
+for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"][:1]:
     # Main parameter
     #TARGET_TYPE = "CLASS"
     target_name = "cnt_" + TARGET_TYPE + "_num"
@@ -163,7 +163,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     # Fit again only on features_top
     pipe_top = Pipeline([
         ('matrix', (ColumnTransformer([('nume', MinMaxScaler(), nume[np.in1d(nume, features_top_train)]),
-                                    ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"),
+                                       ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"),
                                         cate[np.in1d(cate, features_top_train)])]))),
         ('predictor', clone(algo))])
     model_top = pipe_top.fit(df_train[features_top_train], df_train[target_name])
@@ -247,26 +247,33 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
         df_tmp = df_traintest.iloc[i_test, :]
         df_varimp_test_cv = df_varimp_test_cv.append(
             up.variable_importance(d_cv["estimator"][i], df_tmp[features], df_tmp[target_name], features_top_test,
-                                scoring=scoring[metric],
-                                random_state=42, n_jobs=sett.n_jobs).assign(run=i))
+                                   scoring=scoring[metric],
+                                   random_state=42, n_jobs=sett.n_jobs).assign(run=i))
     df_varimp_test_se = (df_varimp_test_cv.groupby("feature")["score_diff", "importance"].agg("sem")
-                        .pipe(lambda x: x.set_axis([col + "_se" for col in x.columns], axis=1, inplace=False))
-                        .reset_index())
+                         .pipe(lambda x: x.set_axis([col + "_se" for col in x.columns], axis=1, inplace=False))
+                         .reset_index())
 
     # Add other information (e.g. special category)
-    df_varimp_test["category"] = pd.cut(df_varimp_test["importance"], [-np.inf, 10, 50, np.inf],
-                                        labels=["low", "medium", "high"])
+    #df_varimp_test["category"] = pd.cut(df_varimp_test["importance"], [-np.inf, 10, 50, np.inf],
+    #                                    labels=["low", "medium", "high"])
+    df_varimp_test["category"] = np.where(df_varimp_test["feature"].isin(nume), "nume", "cate")
 
     # Plot Importance
     df_varimp_plot = (df_varimp_test.query("feature in @features_top_test")
-                    .merge(df_varimp_test_se, how="left", on="feature"))
+                      .merge(df_varimp_test_se, how="left", on="feature")
+                      .merge(df_varimp_train[["feature", "importance", "importance_cum"]]
+                             .rename(columns = {"importance": "importance_train",
+                                                "importance_cum": "importance_cum_train"}),
+                             how="left", on="feature"))
     l_calls = [(up.plot_variable_importance,
                 dict(features=df_varimp_plot["feature"],
-                    importance=df_varimp_plot["importance"],
-                    importance_cum=df_varimp_plot["importance_cum"],
-                    importance_se=df_varimp_plot["importance_se"],
-                    max_score_diff=df_varimp_plot["score_diff"][0].round(2),
-                    category=df_varimp_plot["category"]))]
+                     importance=df_varimp_plot["importance_train"],
+                     importance_cum=df_varimp_plot["importance_cum_train"],
+                     importance_mean=df_varimp_plot["importance"],
+                     importance_se=df_varimp_plot["importance_se"],
+                     #max_score_diff=df_varimp_plot["score_diff"][0].round(2),
+                     category=df_varimp_plot["category"],
+                     color_error="black"))]
     if plot:
         _ = up.plot_l_calls(l_calls,
                             pdf_path=sett.plotloc + "3__vi__" + TARGET_TYPE + ".pdf",
@@ -315,15 +322,16 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
     # Plot it
     l_calls = list()
-    for i, feature in enumerate(list(d_pd.keys())):
+    for i, feature in enumerate(list(d_pd.keys())[:2]):
         i_col = {"REGR": 0, "CLASS": 1, "MULTICLASS": 2}
         l_calls.append((up.plot_pd,
                         dict(feature_name=feature, feature=d_pd[feature]["value"],
-                            yhat=d_pd[feature].iloc[:, i_col[TARGET_TYPE]].values,
-                            yhat_err=d_pd_err[feature].iloc[:, i_col[TARGET_TYPE]].values,
-                            feature_ref=df_test[feature],
-                            refline=yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR" else yhat_test.mean(),
-                            ylim=None, color=sett.colorblind[i_col[TARGET_TYPE]])))
+                             yhat=d_pd[feature].iloc[:, i_col[TARGET_TYPE]].values,
+                             yhat_err=d_pd_err[feature].iloc[:, i_col[TARGET_TYPE]].values,
+                             feature_ref=df_test[feature],
+                             refline=(yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR"
+                                      else yhat_test.mean()),
+                             ylim=None, color=sett.colorblind[i_col[TARGET_TYPE]])))
     if plot:
         up.plot_l_calls(l_calls, pdf_path=sett.plotloc + "3__pd__" + TARGET_TYPE + ".pdf")
 
