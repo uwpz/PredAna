@@ -53,38 +53,39 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
         exec(key + "= val")
 
 
-    ########################################################################################################################
-    # Prepare data
-    ########################################################################################################################
 
-    # --- Sample data ------------------------------------------------------------------------------------------------------
+    ####################################################################################################################
+    # Prepare data
+    ####################################################################################################################
+
+    # --- Sample data --------------------------------------------------------------------------------------------------
 
     # Undersample only training data (take all but n_maxpersample at most)
     if TARGET_TYPE == "REGR":
         df_tmp = df.query("fold == 'train'").sample(n=2000, frac=None).reset_index(drop=True)
     else:
         df.query("fold == 'train'")[target_name].value_counts()
-        df_tmp, b_sample, b_all = up.undersample(df.query("fold == 'train'"), target=target_name, 
-                                                n_max_per_level=2000)
+        df_tmp, b_sample, b_all = up.undersample(df.query("fold == 'train'"), target=target_name,
+                                                 n_max_per_level=2000)
         print(b_sample, b_all)
     df_tune = (pd.concat([df_tmp, df.query("fold == 'test'")], sort=False)
-            .sample(frac=1)  # shuffle
-            .reset_index(drop=True))
+               .sample(frac=1)  # shuffle
+               .reset_index(drop=True))
     df_tune.groupby("fold")[target_name].describe()
 
     # Derive design matrices
     X_standard = (ColumnTransformer([('nume', MinMaxScaler(), nume_standard),
-                                    ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"), cate_standard)])
-                .fit_transform(df_tune[np.append(nume_standard, cate_standard)]))
+                                     ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"), cate_standard)])
+                  .fit_transform(df_tune[nume_standard + cate_standard]))
     X_binned = OneHotEncoder(sparse=False, handle_unknown="ignore").fit_transform(df_tune[cate_binned])
     X_encoded = MinMaxScaler().fit_transform(df_tune[nume_encoded])
-
 
     '''
     tmp = (ColumnTransformer([('nume', MinMaxScaler(), nume_standard),
                                     ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"), cate_standard)]))
     tmp.named_transformers_["cate"].categories_
     '''
+    
 
     # --- Define some splits -------------------------------------------------------------------------------------------
 
@@ -103,13 +104,11 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     print(np.sort(i_test))
     '''
 
-
-
-    ########################################################################################################################
+    ####################################################################################################################
     # # Test an algorithm (and determine tuning parameter grid)
-    ########################################################################################################################
+    ####################################################################################################################
 
-    # --- Lasso / Elastic Net ----------------------------------------------------------------------------------------------
+    # --- Lasso / Elastic Net ------------------------------------------------------------------------------------------
 
     fit = (GridSearchCV(SGDRegressor(penalty="ElasticNet", warm_start=True) if TARGET_TYPE == "REGR" else
                         SGDClassifier(loss="log", penalty="ElasticNet", warm_start=True),  # , tol=1e-2
@@ -120,7 +119,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                         scoring=scoring,
                         return_train_score=True,
                         n_jobs=sett.n_jobs)
-        .fit(X=X_binned,
+           .fit(X=X_binned,
                 y=df_tune[target_name]))
     # Plot: use metric="score" if scoring has only 1 metric
     fig = up.plot_cvresults(fit.cv_results_, metric=metric, x_var="alpha", color_var="l1_ratio")
@@ -135,7 +134,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                             scoring=scoring,
                             return_train_score=True,
                             n_jobs=sett.n_jobs)
-            .fit(X=X_binned,
+               .fit(X=X_binned,
                     y=df_tune[target_name]))
         fig = up.plot_cvresults(fit.cv_results_, metric=metric, x_var="C")
         fig.savefig(sett.plotloc + "2__tune_lasso__" + TARGET_TYPE + ".pdf")
@@ -148,13 +147,12 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                             scoring=scoring,
                             return_train_score=True,
                             n_jobs=sett.n_jobs)
-            .fit(X=X_binned,
+               .fit(X=X_binned,
                     y=df_tune[target_name]))
         fig = up.plot_cvresults(fit.cv_results_, metric=metric, x_var="alpha", color_var="l1_ratio")
         fig.savefig(sett.plotloc + "2__tune_enet__" + TARGET_TYPE + ".pdf")
 
-
-    # --- Random Forest ----------------------------------------------------------------------------------------------------
+    # --- Random Forest ------------------------------------------------------------------------------------------------
 
     fit = (GridSearchCV(RandomForestRegressor() if TARGET_TYPE == "REGR" else
                         RandomForestClassifier(),
@@ -166,13 +164,13 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                         return_train_score=True,
                         # use_warm_start=["n_estimators"],
                         n_jobs=sett.n_jobs)
-        .fit(X=X_standard,
+           .fit(X=X_standard,
                 y=df_tune[target_name]))
     fig = up.plot_cvresults(fit.cv_results_, metric=metric,
                             x_var="n_estimators", color_var="min_samples_leaf")
     fig.savefig(sett.plotloc + "2__tune_rforest__" + TARGET_TYPE + ".pdf")
 
-    # --- XGBoost ----------------------------------------------------------------------------------------------------------
+    # --- XGBoost ------------------------------------------------------------------------------------------------------
     start = time.time()
     fit = (up.GridSearchCV_xlgb(xgb.XGBRegressor(verbosity=0) if TARGET_TYPE == "REGR" else
                                 xgb.XGBClassifier(verbosity=0),
@@ -183,15 +181,14 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                                 scoring=scoring,  # must be dict here
                                 return_train_score=True,
                                 n_jobs=sett.n_jobs)
-        .fit(X=X_standard,
+           .fit(X=X_standard,
                 y=df_tune[target_name]))
     print(time.time() - start)
     fig = up.plot_cvresults(fit.cv_results_, metric=metric,
                             x_var="n_estimators", color_var="max_depth", column_var="min_child_weight")
     fig.savefig(sett.plotloc + "2__tune_xgb__" + TARGET_TYPE + ".pdf")
 
-
-    # --- LightGBM ---------------------------------------------------------------------------------------------------------
+    # --- LightGBM -----------------------------------------------------------------------------------------------------
 
     # Indices of categorical variables (for Lightgbm)
     i_cate_standard = [i for i in range(len(nume_standard)) if nume_standard[i].endswith("_ENCODED")]
@@ -208,7 +205,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                                 scoring=scoring,
                                 return_train_score=True,
                                 n_jobs=sett.n_jobs)
-        .fit(X_standard,
+           .fit(X_standard,
                 categorical_feature=i_cate_standard,
                 y=df_tune[target_name]))
     print(time.time() - start)
@@ -216,10 +213,10 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                             x_var="n_estimators", color_var="num_leaves", column_var="min_child_samples")
     fig.savefig(sett.plotloc + "2__tune_lgbm__" + TARGET_TYPE + ".pdf")
 
-
-    # --- DeepL ---------------------------------------------------------------------------------------------------------
+    # --- DeepL --------------------------------------------------------------------------------------------------------
 
     # Keras wrapper for Scikit
+
     def keras_model(input_dim, output_dim, TARGET_TYPE,
                     size="10",
                     lambdah=None, dropout=None,
@@ -244,28 +241,27 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
             model.add(Dense(1, activation='sigmoid',
                             kernel_regularizer=l2(lambdah) if lambdah is not None else None))
             model.compile(loss="binary_crossentropy", optimizer=optimizers.RMSprop(lr=lr),
-                        metrics=["accuracy"])
+                          metrics=["accuracy"])
         elif TARGET_TYPE == "MULTICLASS":
             model.add(Dense(output_dim, activation='softmax',
                             kernel_regularizer=l2(lambdah) if lambdah is not None else None))
             model.compile(loss="categorical_crossentropy", optimizer=optimizers.RMSprop(lr=lr),
-                        metrics=["accuracy"])
+                          metrics=["accuracy"])
         else:
             model.add(Dense(1, activation='linear',
                             kernel_regularizer=l2(lambdah) if lambdah is not None else None))
             model.compile(loss="mse", optimizer=optimizers.RMSprop(lr=lr),
-                        metrics=["MeanSquaredError"])
+                          metrics=["MeanSquaredError"])
 
         return model
-
 
     # Fit
     n_cols = X_standard.shape[1]
     fit = (GridSearchCV(KerasRegressor(build_fn=keras_model,
-                                    input_dim=n_cols,
-                                    output_dim=1,
-                                    TARGET_TYPE=TARGET_TYPE,
-                                    verbose=0) if TARGET_TYPE == "REGR" else
+                                       input_dim=n_cols,
+                                       output_dim=1,
+                                       TARGET_TYPE=TARGET_TYPE,
+                                       verbose=0) if TARGET_TYPE == "REGR" else
                         KerasClassifier(build_fn=keras_model,
                                         input_dim=n_cols,
                                         output_dim=1 if TARGET_TYPE == "CLASS" else df_tune[target_name].nunique(),
@@ -273,43 +269,41 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                                         verbose=0),
                         {"size": ["10", "10-10", "20"],
                         "lambdah": [1e-8], "dropout": [None],
-                        "batch_size": [40], "lr": [1e-3],
-                        "batch_normalization": [False, True],
-                        "activation": ["relu", "elu"],
-                        "epochs": [2, 7, 15]},
+                         "batch_size": [40], "lr": [1e-3],
+                         "batch_normalization": [False, True],
+                         "activation": ["relu", "elu"],
+                         "epochs": [2, 7, 15]},
                         cv=cv_index.split(df_tune),
                         refit=False,
                         scoring=scoring,
                         return_train_score=True,
                         n_jobs=sett.n_jobs)
-        .fit(X_standard.todense() if TARGET_TYPE == "REGR" else X_standard,  # TODO Bugcheck: Why not sparse for REGR???
+           .fit(X_standard.todense() if TARGET_TYPE == "REGR" else X_standard,  # TODO Bugcheck: Why not sparse for REGR???
                 y=(pd.get_dummies(df_tune[target_name]) if TARGET_TYPE == "MULTICLASS" else
                 df_tune[target_name])))
     fig = up.plot_cvresults(fit.cv_results_, metric=metric,
                             x_var="epochs", color_var="batch_normalization", column_var="activation", row_var="size")
     fig.savefig(sett.plotloc + "2__tune_deepl__" + TARGET_TYPE + ".pdf")
 
-
-
-    ########################################################################################################################
+    ####################################################################################################################
     # Simulation: compare algorithms
-    ########################################################################################################################
+    ####################################################################################################################
 
-    # --- Run methods ------------------------------------------------------------------------------------------------------
+    # --- Run methods --------------------------------------------------------------------------------------------------
 
     df_modelcomp_result = pd.DataFrame()  # intialize
 
     # Elastic Net
     cvresults = cross_validate(
         estimator=GridSearchCV(SGDRegressor(penalty="ElasticNet", warm_start=True) if TARGET_TYPE == "REGR" else
-                            SGDClassifier(loss="log", penalty="ElasticNet", warm_start=True),  # , tol=1e-2
-                            {"alpha": [2 ** x for x in range(-4, -12, -1)],
+                               SGDClassifier(loss="log", penalty="ElasticNet", warm_start=True),  # , tol=1e-2
+                               {"alpha": [2 ** x for x in range(-4, -12, -1)],
                                 "l1_ratio": [1]},
-                            cv=ShuffleSplit(1, test_size=0.2, random_state=999),  # just 1-fold for tuning
-                            refit=metric,
-                            scoring=scoring,
-                            return_train_score=False,
-                            n_jobs=sett.n_jobs),
+                               cv=ShuffleSplit(1, test_size=0.2, random_state=999),  # just 1-fold for tuning
+                               refit=metric,
+                               scoring=scoring,
+                               return_train_score=False,
+                               n_jobs=sett.n_jobs),
         X=X_binned,
         y=df_tune[target_name],
         cv=cv_5foldsep.split(df_tune, test_fold=(df_tune["fold"] == "test")),
@@ -317,8 +311,8 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
         return_train_score=False,
         n_jobs=sett.n_jobs)
     df_modelcomp_result = df_modelcomp_result.append(pd.DataFrame.from_dict(cvresults).reset_index()
-                                                    .assign(model="ElasticNet"),
-                                                    ignore_index=True)
+                                                     .assign(model="ElasticNet"),
+                                                     ignore_index=True)
 
     # Xgboost
     cvresults = cross_validate(
@@ -326,7 +320,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
             xgb.XGBRegressor(verbosity=0) if TARGET_TYPE == "REGR" else
             xgb.XGBClassifier(verbosity=0),
             {"n_estimators": [x for x in range(2000, 2001, 1)], "learning_rate": [0.01],
-            "max_depth": [3], "min_child_weight": [5]},
+             "max_depth": [3], "min_child_weight": [5]},
             cv=ShuffleSplit(1, test_size=0.2, random_state=999),  # just 1-fold for tuning
             refit=metric,
             scoring=scoring,
@@ -339,8 +333,8 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
         return_train_score=False,
         n_jobs=sett.n_jobs)
     df_modelcomp_result = df_modelcomp_result.append(pd.DataFrame.from_dict(cvresults).reset_index()
-                                                    .assign(model="XGBoost"),
-                                                    ignore_index=True)
+                                                     .assign(model="XGBoost"),
+                                                     ignore_index=True)
 
     # Lgbm
     cvresults = cross_validate(
@@ -348,7 +342,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
             lgbm.LGBMRegressor(verbosity=0) if TARGET_TYPE == "REGR" else
             lgbm.LGBMClassifier(verbosity=0),
             {"n_estimators": [x for x in range(500, 501, 1)], "learning_rate": [0.01],
-            "num_leaves": [32], "min_child_weight": [5]},
+             "num_leaves": [32], "min_child_weight": [5]},
             cv=ShuffleSplit(1, test_size=0.2, random_state=999),  # just 1-fold for tuning
             refit=metric,
             scoring=scoring,
@@ -362,20 +356,22 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
         return_train_score=False,
         n_jobs=sett.n_jobs)
     df_modelcomp_result = df_modelcomp_result.append(pd.DataFrame.from_dict(cvresults).reset_index()
-                                                    .assign(model="Lgbm"),
-                                                    ignore_index=True)
+                                                     .assign(model="Lgbm"),
+                                                     ignore_index=True)
 
 
-    # --- Plot model comparison ------------------------------------------------------------------------------
+    # --- Plot model comparison ----------------------------------------------------------------------------------------
+    
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     up.plot_modelcomp(ax, df_modelcomp_result.rename(columns={"index": "run", "test_" + metric: metric}),
-                    scorevar=metric)
+                      scorevar=metric)
     fig.savefig(sett.plotloc + "2__model_comparison__" + TARGET_TYPE + ".pdf")
 
 
-    ########################################################################################################################
+
+    ####################################################################################################################
     # Learning curve for winner algorithm
-    ########################################################################################################################
+    ####################################################################################################################
 
     # Calc learning curve
     n_train, score_train, score_test, time_train, time_test = learning_curve(
@@ -383,7 +379,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
             xgb.XGBRegressor(verbosity=0) if TARGET_TYPE == "REGR" else
             xgb.XGBClassifier(verbosity=0),
             {"n_estimators": [2000], "learning_rate": [0.01],
-            "max_depth": [3], "min_child_weight": [5]},
+             "max_depth": [3], "min_child_weight": [5]},
             cv=ShuffleSplit(1, test_size=0.2, random_state=999),  # just 1-fold for tuning
             refit=metric,
             scoring=scoring,

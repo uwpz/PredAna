@@ -56,7 +56,21 @@ def debugtest(a=1, b=2):
 
 
 def diff(a, b):
-    return np.setdiff1d(a, b, True)
+    a_not_b = np.setdiff1d(a, b, True)
+    if (type(a) is list and type(b) is list):
+        a_not_b = list(a_not_b)
+    return a_not_b
+
+
+def add(a, b):
+    if type(a) is str:
+        return [a + x for x in b]
+    if type(b) is str:
+        return [x + b for x in a]        
+
+
+def interleave(a, b):
+    return [x for tup in zip(a, b) for x in tup]
 
 
 def logit(p):
@@ -200,7 +214,7 @@ d_scoring = {"REGR": {"spear": make_scorer(spear, greater_is_better=True),
 # --- Non-plots --------------------------------------------------------------------------
 
 # Overview of values
-def value_counts(df, topn=5, dtypes=["object"]):
+def value_counts(df, topn=5, dtypes=None):
     """
     Print summary of (categorical) varibles (similar to R's summary function)
     
@@ -217,8 +231,10 @@ def value_counts(df, topn=5, dtypes=["object"]):
     ------- 
     dataframe which comprises summary of variables
     """
-    
-    df_tmp = df.select_dtypes(dtypes)
+    if dtypes is not None:
+        df_tmp = df.select_dtypes(dtypes)
+    else:
+        df_tmp = df
     return pd.concat([(df_tmp[catname].value_counts().iloc[: topn].reset_index()
                        .rename(columns={"index": catname, catname: "#"}))
                       for catname in df_tmp.columns.values],

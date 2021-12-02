@@ -122,7 +122,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
         [('matrix', (ColumnTransformer([('nume', MinMaxScaler(), nume),
                                         ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"), cate)]))),
         ('predictor', algo)])
-    features = np.append(nume, cate)
+    features = nume + cate
     model = pipe.fit(df_train[features], df_train[target_name])
 
     # Predict
@@ -162,9 +162,9 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
     # Fit again only on features_top
     pipe_top = Pipeline([
-        ('matrix', (ColumnTransformer([('nume', MinMaxScaler(), nume[np.in1d(nume, features_top_train)]),
-                                    ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"),
-                                        cate[np.in1d(cate, features_top_train)])]))),
+        ('matrix', (ColumnTransformer([('nume', MinMaxScaler(), [x for x in nume if x in features_top_train]),
+                                       ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"),
+                                        [x for x in cate if x in features_top_train])]))),
         ('predictor', clone(algo))])
     model_top = pipe_top.fit(df_train[features_top_train], df_train[target_name])
 

@@ -34,6 +34,7 @@ plot = True
 #%matplotlib qt / %matplotlib inline  # activate standard/inline window
 plt.ioff()  # / plt.ion()  # stop/start standard window
 #plt.plot(1, 1)
+#%config Completer.use_jedi = False
 
 # Specific parameters 
 TARGET_TYPES = ["REGR", "CLASS", "MULTICLASS"]
@@ -77,11 +78,8 @@ df_orig["cnt_MULTICLASS"] = pd.qcut(df_orig["cnt"], q=[0, 0.8, 0.95, 1],
 df_orig.dtypes
 df_orig.describe()
 up.value_counts(df_orig, dtypes=["object"]).T
-catname = "holiday"
-(df_orig[catname].value_counts().astype("int").iloc[: 5].reset_index()
-                       .rename(columns={"index": catname, catname: "#"})).T
 
-fig, ax = plt.subplots(1, 3, figsize=(15,5))
+fig, ax = plt.subplots(1, 3, figsize=(15, 5))
 df_orig["cnt"].plot.hist(bins=50, ax=ax[0])
 df_orig["cnt"].hist(density=True, cumulative=True, bins=50, histtype="step", ax=ax[1])
 np.log(df_orig["cnt"]).plot.hist(bins=50, ax=ax[2])
@@ -126,25 +124,9 @@ df["fold"] = np.where(df.index.isin(df.query("kaggle_fold == 'train'")
 
 # --- Define numeric covariates ----------------------------------------------------------------------------------------
 
-nume = df_meta_sub.loc[df_meta_sub["type"] == "nume", "variable"].values
+nume = df_meta_sub.loc[df_meta_sub["type"] == "nume", "variable"].values.tolist()
 df[nume] = df[nume].apply(lambda x: pd.to_numeric(x))
 df[nume].describe()
-
-
-# --- Create nominal variables for all numeric variables (for linear models)  -----------------------------------------
-
-#df[nume + "_BINNED"] = (df[nume].swifter.apply(lambda x: (pd.qcut(x, 5)))
-#                        .apply(lambda x: (("q" + x.cat.codes.astype("str") + " " + x.astype("str")))))
-df[nume + "_BINNED"] = df[nume].apply(lambda x: up.bin(x, precision=1))
-
-
-# Convert missings to own level ("(Missing)")
-df[nume + "_BINNED"] = df[nume + "_BINNED"].fillna("(Missing)")
-print(up.value_counts(df[nume + "_BINNED"], 6))
-
-# Get binned variables with just 1 bin (removed later)
-onebin = (nume + "_BINNED")[(df[nume + "_BINNED"].nunique() == 1).values]
-print(onebin)
 
 
 # --- Missings + Outliers + Skewness -----------------------------------------------------------------------------------
@@ -152,7 +134,7 @@ print(onebin)
 # Remove covariates with too many missings
 misspct = df[nume].isnull().mean().round(3)  # missing percentage
 print("misspct:\n", misspct.sort_values(ascending=False))  # view in descending order
-remove = misspct[misspct > 0.95].index.values  # vars to remove
+remove = misspct[misspct > 0.95].index.values.tolist()  # vars to remove
 nume = up.diff(nume, remove)  # adapt metadata
 
 # Check for outliers and skewness
@@ -162,8 +144,8 @@ for TARGET_TYPE in TARGET_TYPES:
     if plot:
         _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume_orig__" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
-                                      dict(feature=df[feature], target=df["cnt_" + TARGET_TYPE], 
-                                           smooth=30)) 
+                                      dict(feature=df[feature], 
+                                           target=df["cnt_" + TARGET_TYPE])) 
                                      for feature in nume])        
 print(time.time() - start)
     
@@ -171,11 +153,23 @@ print(time.time() - start)
 df[nume] = up.Winsorize(lower_quantile=None, upper_quantile=0.99).fit_transform(df[nume])
 
 # Log-Transform
-tolog = np.array([], dtype="object")
+tolog = ["temp"]
 if len(tolog):
-    df[tolog + "_LOG_"] = df[tolog].apply(lambda x: np.log(x - min(0, np.min(x)) + 1))
-    nume = np.where(np.isin(nume, tolog), nume + "_LOG_", nume)  # adapt metadata (keep order)
-    df.rename(columns=dict(zip(tolog + "_BINNED", tolog + "_LOG_" + "_BINNED")), inplace=True)  # adapt binned version
+    df[up.add(tolog, "_LOG")] = df[tolog].apply(lambda x: np.log(x - min(0, np.min(x)) + 1))
+    nume = [x + "_LOG" if (x in tolog) else (x) for x in nume]  # adapt metadata (keep order)
+
+
+# --- Create nominal variables for all numeric variables (for linear models)  -----------------------------------------
+nume_BINNED = up.add(nume, "_BINNED")
+df[nume_BINNED] = df[nume].apply(lambda x: up.bin(x, precision=1))
+
+# Convert missings to own level ("(Missing)")
+df[nume_BINNED] = df[nume_BINNED].fillna("(Missing)")
+print(up.value_counts(df[nume_BINNED], 6))
+
+# Get binned variables with just 1 bin (removed later)
+onebin = nume_BINNED[(df[nume_BINNED].nunique() == 1).values]
+print(onebin)
 
 
 # --- Final variable information ---------------------------------------------------------------------------------------
@@ -184,7 +178,7 @@ for TARGET_TYPE in TARGET_TYPES:
     #TARGET_TYPE = "REGR"
     
     # Univariate variable performances
-    varperf_nume = df[np.append(nume, nume + "_BINNED")].swifter.progress_bar(False).apply(lambda x: (
+    varperf_nume = df[nume + nume_BINNED].swifter.progress_bar(False).apply(lambda x: (
         up.variable_performance(x, df["cnt_" + TARGET_TYPE],
                                 splitter=ShuffleSplit(n_splits=1, test_size=0.2, random_state=42),
                                 scorer=up.d_scoring[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" else "auc"])))
@@ -197,7 +191,7 @@ for TARGET_TYPE in TARGET_TYPES:
                                       dict(feature=df[feature], target=df["cnt_" + TARGET_TYPE], 
                                            title=feature + " (VI: " + format(varperf_nume[feature], "0.2f") + ")",
                                            regplot_type="lowess")) 
-                                     for feature in np.column_stack((nume, nume + "_BINNED")).ravel()])
+                                     for feature in up.interleave(nume, nume_BINNED)])
 
 
 # --- Removing variables -----------------------------------------------------------------------------------------------
@@ -211,7 +205,7 @@ df[nume].describe()
 _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__corr_nume.pdf", n_rows=1, n_cols=1, figsize=(6, 6),
                     l_calls=[(up.plot_corr,
                               dict(df=df[nume], method="spearman", cutoff=0))])
-remove = ["atemp"]
+remove = [""]
 nume = up.diff(nume, remove)
 
 
@@ -226,22 +220,22 @@ varperf_nume_fold = df[nume].swifter.apply(lambda x: up.variable_performance(x, 
 
 
 # Plot: only variables with with highest importance
-nume_toprint = varperf_nume_fold[varperf_nume_fold > 0.53].index.values
-if len(nume_toprint):
+nume_toplot = varperf_nume_fold[varperf_nume_fold > 0.53].index.values
+if len(nume_toplot):
     if plot:
         _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume_folddep" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], target=df["fold"],
                                            title=feature + " (VI: " + format(varperf_nume_fold[feature], "0.2f") + ")",
                                            smooth=30))
-                                     for feature in nume_toprint])
+                                     for feature in nume_toplot])
 
 
 # --- Missing indicator and imputation (must be done at the end of all processing)--------------------------------------
 
-miss = nume[df[nume].isnull().any().values]
-df["MISS_" + miss] = pd.DataFrame(np.where(df[miss].isnull(), "No", "Yes"))
-df["MISS_" + miss].describe()
+miss = df[nume].isnull().any()[lambda x: x].index.values.tolist()
+df[up.add("MISS_", miss)] = pd.DataFrame(np.where(df[miss].isnull(), "No", "Yes"))
+df[up.add("MISS_", miss)].describe()
 
 # Impute missings with randomly sampled value (or median, see below)
 np.random.seed(123)
@@ -257,7 +251,7 @@ df[miss].isnull().sum()
 # --- Define categorical covariates ------------------------------------------------------------------------------------
 
 # Categorical variables
-cate = df_meta_sub.loc[df_meta_sub.type.isin(["cate"]), "variable"].values
+cate = df_meta_sub.loc[df_meta_sub.type.isin(["cate"]), "variable"].values.tolist()
 df[cate] = df[cate].astype("str")
 df[cate].describe()
 
@@ -269,15 +263,16 @@ df[cate] = df[cate].fillna("(Missing)").replace("nan", "(Missing)")
 df[cate].describe()
 
 # Create ordinal and binary-encoded features
-ordi = np.array(["hr", "mnth", "yr"], dtype="object")
-df[ordi + "_ENCODED"] = df[ordi].apply(lambda x: pd.to_numeric(x))  # ordinal
-yesno = np.concatenate([np.array(["holiday", "workingday"], dtype="object"), "MISS_" + miss])
-df[yesno + "_ENCODED"] = df[yesno].apply(lambda x: x.map({"No": 0, "Yes": 1}))  # binary
+ordi = ["hr", "mnth", "yr"]
+df[up.add(ordi, "_ENCODED")] = df[ordi].apply(lambda x: pd.to_numeric(x))  # ordinal
+yesno = ["holiday", "workingday"] + ["MISS_" + x for x in miss]
+df[up.add(yesno, "_ENCODED")] = df[yesno].apply(lambda x: x.map({"No": 0, "Yes": 1}))  # binary
 
 # Create target-encoded features for nominal variables
-nomi = up.diff(cate, np.concatenate([ordi, yesno]))
+nomi = up.diff(cate, ordi + yesno)
 df_util = df.query("fold == 'util'").reset_index(drop=True)
-df[nomi + "_ENCODED"] = target_encoder.TargetEncoder().fit(df_util[nomi], df_util["cnt_REGR"]).transform(df[nomi])
+df[up.add(nomi, "_ENCODED")] = target_encoder.TargetEncoder().fit(df_util[nomi], 
+                                                                  df_util["cnt_REGR"]).transform(df[nomi])
 #df = df.query("fold != 'util'").reset_index(drop=True)  # remove utility data
 
 # Get "too many members" columns and lump levels
@@ -297,7 +292,7 @@ for TARGET_TYPE in TARGET_TYPES:
     #TARGET_TYPE = "CLASS"
 
     # Univariate variable importance
-    varperf_cate = df[np.append(cate, ["MISS_" + miss])].swifter.apply(lambda x: (
+    varperf_cate = df[cate + up.add("MISS_", miss)].swifter.apply(lambda x: (
         up.variable_performance(x, df["cnt_" + TARGET_TYPE],
                                 splitter=ShuffleSplit(n_splits=1, test_size=0.2, random_state=42),
                                 scorer=up.d_scoring[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" else "auc"])))
@@ -310,8 +305,8 @@ for TARGET_TYPE in TARGET_TYPES:
                                       dict(feature=df[feature],
                                            target=df["cnt_" + TARGET_TYPE],
                                            title=feature + " (VI: " + format(varperf_cate[feature], "0.2f") + ")",
-                                           smooth=30))
-                                     for feature in np.append(cate, "MISS_" + miss)])
+                                           add_miss_info=False))
+                                     for feature in cate + up.add("MISS_", miss)])
         
 
 
@@ -324,11 +319,11 @@ toomany = up.diff(toomany, ["xxx"])
 # Remove highly/perfectly (>=99%) correlated (the ones with less levels!)
 _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__corr_cate.pdf", n_rows=1, n_cols=1, figsize=(8, 6),
                     l_calls=[(up.plot_corr,
-                              dict(df=df[np.append(cate, "MISS_" + miss)], method="cramersv", cutoff=0))])
+                              dict(df=df[cate + up.add("MISS_", miss)], method="cramersv", cutoff=0))])
 '''
 _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__corr.pdf", n_rows=1, n_cols=1, figsize=(8, 6),
                     l_calls=[(up.plot_corr,
-                              dict(df=df[np.concatenate([cate, "MISS_" + miss, nume + "_BINNED"])], 
+                              dict(df=df[cate + up.add("MISS_", miss) + up.add(nume,"_BINNED")], 
                                    method="cramersv", cutoff=0))])
 '''
 
@@ -337,14 +332,14 @@ _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__corr.pdf", n_rows=1, n_cols=1, f
 
 # Hint: In case of having a detailed date variable this can be used as regression target here as well!
 # Univariate variable importance (again ONLY for non-missing observations!)
-varperf_cate_fold = df[np.append(cate, ["MISS_" + miss])].swifter.apply(lambda x: (
+varperf_cate_fold = df[cate + up.add("MISS_", miss)].swifter.apply(lambda x: (
     up.variable_performance(x, df["fold"],
                             splitter=up.InSampleSplit(),
                             scorer=up.d_scoring["CLASS"]["auc"])))
 
 # Plot: only variables with with highest importance
-cate_toprint = varperf_cate_fold[varperf_cate_fold > 0.52].index.values
-if len(nume_toprint):
+cate_toplot = varperf_cate_fold[varperf_cate_fold > 0.52].index.values
+if len(cate_toplot):
     if plot:
         _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_cate_folddep" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
@@ -352,7 +347,7 @@ if len(nume_toprint):
                                            target=df["fold"],
                                            title=feature + " (VI: " + format(varperf_cate_fold[feature], "0.2f") + ")",
                                            smooth=30))
-                                     for feature in cate_toprint])
+                                     for feature in cate_toplot])
 
 
 ########################################################################################################################
@@ -368,17 +363,17 @@ df["cnt_MULTICLASS_num"] = df["cnt_MULTICLASS"].str.slice(0, 1).astype("int")
 # --- Define final features --------------------------------------------------------------------------------------------
 
 # Standard: for all algorithms
-nume_standard = np.append(nume, toomany + "_ENCODED")
-cate_standard = np.append(cate, "MISS_" + miss)
+nume_standard = nume + up.add(toomany, "_ENCODED")
+cate_standard = cate + ("MISS_", miss)
 
 # Binned: for Lasso
-cate_binned = np.append(up.diff(nume + "_BINNED", onebin), cate)
+cate_binned = up.diff(up.add(nume, "_BINNED"), onebin) + cate
 
 # Encoded: for Lightgbm or DeepLearning
-nume_encoded = np.concatenate([nume, cate + "_ENCODED", "MISS_" + miss + "_ENCODED"])
+nume_encoded = np.unique(nume + up.add(cate, "_ENCODED") + ["MISS_" + x + "_ENCODED" for x in miss]).tolist()
 
 # Check
-all_features = np.unique(np.concatenate([nume_standard, cate_standard, cate_binned, nume_encoded]))
+all_features = np.unique(nume_standard + cate_standard + cate_binned + nume_encoded).tolist()
 up.diff(all_features, df.columns.values.tolist())
 up.diff(df.columns.values.tolist(), all_features)
 
