@@ -74,15 +74,18 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     df_tune.groupby("fold")[target_name].describe()
 
     # Derive design matrices
-    X_standard = (ColumnTransformer([('nume', MinMaxScaler(), nume_standard),
-                                     ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"), cate_standard)])
+    X_standard = (ColumnTransformer([('nume', MinMaxScaler(), 
+                                      np.array(nume_standard)),
+                                     ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"), 
+                                      np.array(cate_standard))])
                   .fit_transform(df_tune[nume_standard + cate_standard]))
     X_binned = OneHotEncoder(sparse=False, handle_unknown="ignore").fit_transform(df_tune[cate_binned])
     X_encoded = MinMaxScaler().fit_transform(df_tune[nume_encoded])
 
     '''
-    tmp = (ColumnTransformer([('nume', MinMaxScaler(), nume_standard),
-                                    ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"), cate_standard)]))
+    tmp = (ColumnTransformer([('nume', MinMaxScaler(), np.array(nume_standard)),
+                                    ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"), 
+                                    np.array(cate_standard))]))
     tmp.named_transformers_["cate"].categories_
     '''
     
@@ -103,6 +106,8 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     print(np.sort(i_train))
     print(np.sort(i_test))
     '''
+
+
 
     ####################################################################################################################
     # # Test an algorithm (and determine tuning parameter grid)
@@ -152,6 +157,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
         fig = up.plot_cvresults(fit.cv_results_, metric=metric, x_var="alpha", color_var="l1_ratio")
         fig.savefig(sett.plotloc + "2__tune_enet__" + TARGET_TYPE + ".pdf")
 
+
     # --- Random Forest ------------------------------------------------------------------------------------------------
 
     fit = (GridSearchCV(RandomForestRegressor() if TARGET_TYPE == "REGR" else
@@ -170,6 +176,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                             x_var="n_estimators", color_var="min_samples_leaf")
     fig.savefig(sett.plotloc + "2__tune_rforest__" + TARGET_TYPE + ".pdf")
 
+
     # --- XGBoost ------------------------------------------------------------------------------------------------------
     start = time.time()
     fit = (up.GridSearchCV_xlgb(xgb.XGBRegressor(verbosity=0) if TARGET_TYPE == "REGR" else
@@ -187,6 +194,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     fig = up.plot_cvresults(fit.cv_results_, metric=metric,
                             x_var="n_estimators", color_var="max_depth", column_var="min_child_weight")
     fig.savefig(sett.plotloc + "2__tune_xgb__" + TARGET_TYPE + ".pdf")
+
 
     # --- LightGBM -----------------------------------------------------------------------------------------------------
 
@@ -212,6 +220,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     fig = up.plot_cvresults(fit.cv_results_, metric=metric,
                             x_var="n_estimators", color_var="num_leaves", column_var="min_child_samples")
     fig.savefig(sett.plotloc + "2__tune_lgbm__" + TARGET_TYPE + ".pdf")
+
 
     # --- DeepL --------------------------------------------------------------------------------------------------------
 
@@ -284,6 +293,8 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     fig = up.plot_cvresults(fit.cv_results_, metric=metric,
                             x_var="epochs", color_var="batch_normalization", column_var="activation", row_var="size")
     fig.savefig(sett.plotloc + "2__tune_deepl__" + TARGET_TYPE + ".pdf")
+
+
 
     ####################################################################################################################
     # Simulation: compare algorithms

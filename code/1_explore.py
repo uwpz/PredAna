@@ -168,7 +168,7 @@ df[nume_BINNED] = df[nume_BINNED].fillna("(Missing)")
 print(up.value_counts(df[nume_BINNED], 6))
 
 # Get binned variables with just 1 bin (removed later)
-onebin = nume_BINNED[(df[nume_BINNED].nunique() == 1).values]
+onebin = (df[nume_BINNED].nunique() == 1)[lambda x: x].index.values.tolist()
 print(onebin)
 
 
@@ -345,8 +345,7 @@ if len(cate_toplot):
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature],
                                            target=df["fold"],
-                                           title=feature + " (VI: " + format(varperf_cate_fold[feature], "0.2f") + ")",
-                                           smooth=30))
+                                           title=feature + " (VI: " + format(varperf_cate_fold[feature], "0.2f") + ")"))
                                      for feature in cate_toplot])
 
 
@@ -364,7 +363,7 @@ df["cnt_MULTICLASS_num"] = df["cnt_MULTICLASS"].str.slice(0, 1).astype("int")
 
 # Standard: for all algorithms
 nume_standard = nume + up.add(toomany, "_ENCODED")
-cate_standard = cate + ("MISS_", miss)
+cate_standard = cate + up.add("MISS_", miss)
 
 # Binned: for Lasso
 cate_binned = up.diff(up.add(nume, "_BINNED"), onebin) + cate

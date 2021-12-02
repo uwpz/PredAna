@@ -8,11 +8,11 @@
 import matplotlib
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 import seaborn as sns
 import pickle
 import time
-from importlib import reload 
+from importlib import reload
 
 # Special
 from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
@@ -61,12 +61,13 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
     # Tuning parameter to use (for xgb) and classifier definition
     xgb_param = dict(n_estimators=1100, learning_rate=0.01,
-                    max_depth=3, min_child_weight=10,
-                    colsample_bytree=0.7, subsample=0.7,
-                    gamma=0,
-                    verbosity=0,
-                    n_jobs=sett.n_jobs,
-                    use_label_encoder=False)
+                     max_depth=3, min_child_weight=10,
+                     colsample_bytree=0.7, subsample=0.7,
+                     gamma=0,
+                     verbosity=0,
+                     n_jobs=sett.n_jobs,
+                     use_label_encoder=False)
+
 
 
     ########################################################################################################################
@@ -100,8 +101,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     df_train = df.query("fold == 'train'").reset_index(drop=True)
     df_test = df.query("fold == 'test'").reset_index(drop=True)
     algo = up.UndersampleEstimator(xgb.XGBRegressor(**xgb_param) if TARGET_TYPE == "REGR"
-                                else xgb.XGBClassifier(**xgb_param), n_max_per_level=2000)
-
+                                   else xgb.XGBClassifier(**xgb_param), n_max_per_level=2000)
 
     # Folds for crossvalidation and check
     cv_5foldsep = up.KFoldSep(5)
@@ -110,7 +110,8 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     print("TRAIN-fold:\n", df_traintest["fold"].iloc[i_train].value_counts(), i_train[:5])
     print("TEST-fold:\n", df_traintest["fold"].iloc[i_test].value_counts(), i_test[:5])
 
-        
+
+
     # ######################################################################################################################
     # Performance
     # ######################################################################################################################
@@ -119,9 +120,10 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
     # Fit
     pipe = Pipeline(
-        [('matrix', (ColumnTransformer([('nume', MinMaxScaler(), nume),
-                                        ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"), cate)]))),
-        ('predictor', algo)])
+        [('matrix', (ColumnTransformer([('nume', MinMaxScaler(), np.array(nume)),
+                                        ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"), 
+                                         np.array(cate))]))),
+         ('predictor', algo)])
     features = nume + cate
     model = pipe.fit(df_train[features], df_train[target_name])
 
@@ -136,16 +138,19 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
     # Plot performance
     if plot:
-        d_calls = up.get_plotcalls_model_performance(y=df_test[target_name], yhat=yhat_test, target_labels=target_labels)
-        _ = up.plot_l_calls(l_calls=d_calls.values(), n_cols=3, n_rows=2, 
+        d_calls = up.get_plotcalls_model_performance(
+            y=df_test[target_name],
+            yhat=yhat_test, target_labels=target_labels)
+        _ = up.plot_l_calls(l_calls=d_calls.values(), n_cols=3, n_rows=2,
                             pdf_path=sett.plotloc + "3__performance__" + TARGET_TYPE + ".pdf")
 
     # Check performance for crossvalidated fits
     d_cv = cross_validate(model, df_traintest[features], df_traintest[target_name],
-                        cv=cv_5foldsep.split(df_traintest, test_fold=(df_traintest["fold"] == "test")),  # special 5fold
-                        scoring=scoring,
-                        return_estimator=True,
-                        n_jobs=sett.n_jobs)
+                          cv=cv_5foldsep.split(df_traintest, test_fold=(
+                              df_traintest["fold"] == "test")),  # special 5fold
+                          scoring=scoring,
+                          return_estimator=True,
+                          n_jobs=sett.n_jobs)
     print(d_cv["test_" + metric], " \n", np.mean(d_cv["test_" + metric]), np.std(d_cv["test_" + metric]))
 
 
@@ -153,8 +158,8 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
     # Variable importance (on train data!)
     df_varimp_train = up.variable_importance(model, df_train[features], df_train[target_name], features,
-                                            scoring=scoring[metric],
-                                            random_state=42, n_jobs=sett.n_jobs)
+                                             scoring=scoring[metric],
+                                             random_state=42, n_jobs=sett.n_jobs)
     # Scikit's VI: permuatation_importance("same parameter but remove features argument and add n_repeats=1")
 
     # Top features (importances sum up to 95% of whole sum)
@@ -162,9 +167,10 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
     # Fit again only on features_top
     pipe_top = Pipeline([
-        ('matrix', (ColumnTransformer([('nume', MinMaxScaler(), [x for x in nume if x in features_top_train]),
+        ('matrix', (ColumnTransformer([('nume', MinMaxScaler(), 
+                                        np.array([x for x in nume if x in features_top_train])),
                                        ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"),
-                                        [x for x in cate if x in features_top_train])]))),
+                                        np.array([x for x in cate if x in features_top_train]))]))),
         ('predictor', clone(algo))])
     model_top = pipe_top.fit(df_train[features_top_train], df_train[target_name])
 
@@ -180,6 +186,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
             d_calls = up.get_plotcalls_model_performance(y=df_test[target_name], yhat=yhat_top)
             _ = up.plot_l_calls(l_calls=d_calls.values(), n_cols=3, n_rows=2,
                                 pdf_path=sett.plotloc + "3__performance_top__" + TARGET_TYPE + ".pdf")
+
 
 
     ########################################################################################################################
@@ -202,10 +209,9 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
         _ = up.plot_l_calls(pdf_path=sett.plotloc + "3__diagnosis_residual__" + TARGET_TYPE + ".pdf",
                             n_cols=3, n_rows=2, figsize=(18, 12),
                             l_calls=[(up.plot_feature_target,
-                                    dict(feature=df_test[feature], target=df_test["residual"],
-                                        add_miss_info=False, color=sett.colorblind[3]))
-                                    for feature in up.diff(features_top_train, "day_of_month_ENCODED")])
-
+                                      dict(feature=df_test[feature], target=df_test["residual"],
+                                           add_miss_info=False, color=sett.colorblind[3]))
+                                     for feature in up.diff(features_top_train, "day_of_month_ENCODED")])
 
     # Absolute residuals
     if TARGET_TYPE == "REGR":
@@ -213,9 +219,11 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
             _ = up.plot_l_calls(pdf_path=sett.plotloc + "3__diagnosis_absolute_residual__" + TARGET_TYPE + ".pdf",
                                 n_cols=3, n_rows=2, figsize=(18, 12),
                                 l_calls=[(up.plot_feature_target,
-                                        dict(feature=df_test[feature], target=df_test["abs_residual"],
-                                            add_miss_info=False, color=sett.colorblind[3]))
-                                        for feature in up.diff(features_top_train, "day_of_month_ENCODED")])
+                                          dict(feature=df_test[feature], target=df_test["abs_residual"],
+                                               add_miss_info=False, color=sett.colorblind[3]))
+                                         for feature in up.diff(features_top_train, "day_of_month_ENCODED")])
+
+
 
     ########################################################################################################################
     # Variable Importance
@@ -247,11 +255,11 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
         df_tmp = df_traintest.iloc[i_train, :]
         df_varimp_test_cv = df_varimp_test_cv.append(
             up.variable_importance(d_cv["estimator"][i], df_tmp[features], df_tmp[target_name], features_top_test,
-                                scoring=scoring[metric],
-                                random_state=42, n_jobs=sett.n_jobs).assign(run=i))
+                                   scoring=scoring[metric],
+                                   random_state=42, n_jobs=sett.n_jobs).assign(run=i))
     df_varimp_test_se = (df_varimp_test_cv.groupby("feature")["score_diff", "importance"].agg("sem")
-                        .pipe(lambda x: x.set_axis([col + "_se" for col in x.columns], axis=1, inplace=False))
-                        .reset_index())
+                         .pipe(lambda x: x.set_axis([col + "_se" for col in x.columns], axis=1, inplace=False))
+                         .reset_index())
 
     # Add other information (e.g. special category)
     df_varimp_test["category"] = pd.cut(df_varimp_test["importance"], [-np.inf, 10, 50, np.inf],
@@ -259,18 +267,19 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
     # Plot Importance
     df_varimp_plot = (df_varimp_test.query("feature in @features_top_test")
-                    .merge(df_varimp_test_se, how="left", on="feature"))
+                      .merge(df_varimp_test_se, how="left", on="feature"))
     l_calls = [(up.plot_variable_importance,
                 dict(features=df_varimp_plot["feature"],
-                    importance=df_varimp_plot["importance"],
-                    importance_cum=df_varimp_plot["importance_cum"],
-                    importance_se=df_varimp_plot["importance_se"],
-                    max_score_diff=df_varimp_plot["score_diff"][0].round(2),
-                    category=df_varimp_plot["category"]))]
+                     importance=df_varimp_plot["importance"],
+                     importance_cum=df_varimp_plot["importance_cum"],
+                     importance_se=df_varimp_plot["importance_se"],
+                     max_score_diff=df_varimp_plot["score_diff"][0].round(2),
+                     category=df_varimp_plot["category"]))]
     if plot:
         _ = up.plot_l_calls(l_calls,
                             pdf_path=sett.plotloc + "3__vi__" + TARGET_TYPE + ".pdf",
                             n_rows=1, n_cols=1, figsize=(8, 4))
+
 
 
     ########################################################################################################################
@@ -297,6 +306,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
         for feature in nume_top_test)
     '''
 
+
     # --- Standard PD --------------------------------------------------------------------------------------------------
 
     # Dataframe based patial dependence which can use a reference dataset for value-grid defintion
@@ -307,7 +317,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     for i, (i_train, i_test) in enumerate(cv_5foldsep.split(df_traintest,
                                                             test_fold=(df_traintest["fold"] == "test").values)):
         d_pd_run = up.partial_dependence(model, df_traintest.iloc[i_test, :][features], features_top_test,
-                                        df_ref=df_train)
+                                         df_ref=df_train)
         for feature in features_top_test:
             d_pd_cv[feature] = d_pd_cv[feature].append(d_pd_run[feature].assign(run=i)).reset_index(drop=True)
     d_pd_err = {feature: df_tmp.drop(columns="run").groupby("value").std()
@@ -317,16 +327,16 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     l_calls = list()
     for i, feature in enumerate(list(d_pd.keys())):
         i_col = {"REGR": 0, "CLASS": 1, "MULTICLASS": 2}
-        l_calls.append((up.plot_pd,
-                        dict(feature_name=feature, feature=d_pd[feature]["value"],
-                            yhat=d_pd[feature].iloc[:, i_col[TARGET_TYPE]].values,
-                            yhat_err=d_pd_err[feature].iloc[:, i_col[TARGET_TYPE]].values,
-                            feature_ref=df_test[feature],
-                            refline=yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR" else yhat_test.mean(),
-                            ylim=None, color=sett.colorblind[i_col[TARGET_TYPE]])))
+        l_calls.append(
+            (up.plot_pd,
+             dict(
+                 feature_name=feature, feature=d_pd[feature]["value"],
+                 yhat=d_pd[feature].iloc[:, i_col[TARGET_TYPE]].values, yhat_err=d_pd_err[feature].iloc
+                 [:, i_col[TARGET_TYPE]].values, feature_ref=df_test[feature],
+                 refline=yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR" else yhat_test.mean(),
+                 ylim=None, color=sett.colorblind[i_col[TARGET_TYPE]])))
     if plot:
         up.plot_l_calls(l_calls, pdf_path=sett.plotloc + "3__pd__" + TARGET_TYPE + ".pdf")
-
 
     '''
     # --- Shap based PD --------------------------------------------------------------------------------------------------
@@ -364,6 +374,8 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
         up.plot_l_calls(l_calls, pdf_path=sett.plotloc + "3__pd_shap__" + TARGET_TYPE + ".pdf")
     '''
 
+
+
     ########################################################################################################################
     # Explanations
     ########################################################################################################################
@@ -397,12 +409,13 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
     # Rescale due to undersampling
     if TARGET_TYPE == "CLASS":
-        shap_values.base_values = up.logit(up.scale_predictions(up.inv_logit(shap_values.base_values), 
+        shap_values.base_values = up.logit(up.scale_predictions(up.inv_logit(shap_values.base_values),
                                                                 model[1].b_sample_, model[1].b_all_))
     if TARGET_TYPE == "MULTICLASS":
-        shap_values.base_values = np.log(up.scale_predictions(np.exp(shap_values.base_values) /
-                                                            np.exp(shap_values.base_values).sum(axis=1, keepdims=True),
-                                                            model[1].b_sample_, model[1].b_all_))
+        shap_values.base_values = np.log(
+            up.scale_predictions(
+                np.exp(shap_values.base_values) / np.exp(shap_values.base_values).sum(axis=1, keepdims=True),
+                model[1].b_sample_, model[1].b_all_))
 
     # Check
     shaphat = shap_values.values.sum(axis=1) + shap_values.base_values
@@ -416,7 +429,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     #    print(np.isclose(uu.inv_logit(shaphat), model.predict_proba(df_explain[features])[:, 1]))
     else:
         print(np.isclose(np.exp(shaphat) / np.exp(shaphat).sum(axis=1, keepdims=True),
-                        model.predict_proba(df_explain[features])))
+                         model.predict_proba(df_explain[features])))
 
     '''
     # Plot default waterfall
@@ -438,25 +451,25 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     l_calls = list()
     for i in range(len(df_explain)):
         y_str = (str(df_explain[target_name].iloc[i]) if TARGET_TYPE != "REGR"
-                else format(df_explain[target_name].iloc[i], ".2f"))
+                 else format(df_explain[target_name].iloc[i], ".2f"))
         i_col = {"CLASS": 1, "MULTICLASS": df_explain[target_name].iloc[i]}
         yhat_str = (format(yhat_explain[i, i_col[TARGET_TYPE]], ".3f") if TARGET_TYPE != "REGR"
                     else format(yhat_explain[i], ".2f"))
         l_calls.append((up.plot_shap,
-                        dict(shap_values=shap_values, 
-                            index=i, 
-                            id=df_explain[id_name][i],
-                            y_str=y_str,
-                            yhat_str=yhat_str,
-                            multiclass_index=None if TARGET_TYPE != "MULTICLASS" else i_col[TARGET_TYPE])))
+                        dict(shap_values=shap_values,
+                             index=i,
+                             id=df_explain[id_name][i],
+                             y_str=y_str,
+                             yhat_str=yhat_str,
+                             multiclass_index=None if TARGET_TYPE != "MULTICLASS" else i_col[TARGET_TYPE])))
     if plot:
         up.plot_l_calls(l_calls, pdf_path=sett.plotloc + "3__shap__" + TARGET_TYPE + ".pdf")
 
 
 
-    # ######################################################################################################################
+    # ##################################################################################################################
     # Individual dependencies / Counterfactuals
-    # ######################################################################################################################
+    # ##################################################################################################################
 
     # TODO
 
