@@ -227,8 +227,7 @@ if len(nume_toplot):
         _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume_folddep" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], target=df["fold"],
-                                           title=feature + " (VI: " + format(varperf_nume_fold[feature], "0.2f") + ")",
-                                           smooth=30))
+                                           title=feature + " (VI: " + format(varperf_nume_fold[feature], "0.2f") + ")"))
                                      for feature in nume_toplot])
 
 

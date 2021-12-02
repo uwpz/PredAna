@@ -167,16 +167,10 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"][:1]:
 
     # Fit again only on features_top
     pipe_top = Pipeline([
-<<<<<<< HEAD
         ('matrix', (ColumnTransformer([('nume', MinMaxScaler(), 
                                         np.array([x for x in nume if x in features_top_train])),
                                        ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"),
                                         np.array([x for x in cate if x in features_top_train]))]))),
-=======
-        ('matrix', (ColumnTransformer([('nume', MinMaxScaler(), nume[np.in1d(nume, features_top_train)]),
-                                       ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"),
-                                        cate[np.in1d(cate, features_top_train)])]))),
->>>>>>> feature/alli_fixes
         ('predictor', clone(algo))])
     model_top = pipe_top.fit(df_train[features_top_train], df_train[target_name])
 
@@ -274,16 +268,6 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"][:1]:
 
     # Plot Importance
     df_varimp_plot = (df_varimp_test.query("feature in @features_top_test")
-<<<<<<< HEAD
-                      .merge(df_varimp_test_se, how="left", on="feature"))
-    l_calls = [(up.plot_variable_importance,
-                dict(features=df_varimp_plot["feature"],
-                     importance=df_varimp_plot["importance"],
-                     importance_cum=df_varimp_plot["importance_cum"],
-                     importance_se=df_varimp_plot["importance_se"],
-                     max_score_diff=df_varimp_plot["score_diff"][0].round(2),
-                     category=df_varimp_plot["category"]))]
-=======
                       .merge(df_varimp_test_se, how="left", on="feature")
                       .merge(df_varimp_train[["feature", "importance", "importance_cum"]]
                              .rename(columns = {"importance": "importance_train",
@@ -298,7 +282,6 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"][:1]:
                      #max_score_diff=df_varimp_plot["score_diff"][0].round(2),
                      category=df_varimp_plot["category"],
                      color_error="black"))]
->>>>>>> feature/alli_fixes
     if plot:
         _ = up.plot_l_calls(l_calls,
                             pdf_path=sett.plotloc + "3__vi__" + TARGET_TYPE + ".pdf",
@@ -351,7 +334,6 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"][:1]:
     l_calls = list()
     for i, feature in enumerate(list(d_pd.keys())[:2]):
         i_col = {"REGR": 0, "CLASS": 1, "MULTICLASS": 2}
-<<<<<<< HEAD
         l_calls.append(
             (up.plot_pd,
              dict(
@@ -360,16 +342,6 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"][:1]:
                  [:, i_col[TARGET_TYPE]].values, feature_ref=df_test[feature],
                  refline=yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR" else yhat_test.mean(),
                  ylim=None, color=sett.colorblind[i_col[TARGET_TYPE]])))
-=======
-        l_calls.append((up.plot_pd,
-                        dict(feature_name=feature, feature=d_pd[feature]["value"],
-                             yhat=d_pd[feature].iloc[:, i_col[TARGET_TYPE]].values,
-                             yhat_err=d_pd_err[feature].iloc[:, i_col[TARGET_TYPE]].values,
-                             feature_ref=df_test[feature],
-                             refline=(yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR"
-                                      else yhat_test.mean()),
-                             ylim=None, color=sett.colorblind[i_col[TARGET_TYPE]])))
->>>>>>> feature/alli_fixes
     if plot:
         up.plot_l_calls(l_calls, pdf_path=sett.plotloc + "3__pd__" + TARGET_TYPE + ".pdf")
 
