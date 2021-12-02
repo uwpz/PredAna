@@ -93,16 +93,20 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     # --- Define some splits -------------------------------------------------------------------------------------------
 
     cv_index = PredefinedSplit(df_tune["fold"].map({"train": -1, "test": 0}).values)
+    df_tune["fold"]=pd.cut(pd.Series(np.arange(len(df_tune))), bins=5, labels=False)
+    cv_tmp = PredefinedSplit(df_tune["fold"].values)
     cv_5fold = KFold(5, shuffle=True, random_state=42)
     cv_5foldsep = up.KFoldSep(5, random_state=42)
 
     '''
     # Test a split
     df_tune["fold"].value_counts()
-    split = cv_my5fold.split(df_tune)
+    split = cv_tmp.split(df_tune)
     i_train, i_test = next(split)
     df_tune["fold"].iloc[i_train].describe()
     df_tune["fold"].iloc[i_test].describe()
+    df_tune["fold"].iloc[i_train].value_counts()
+    df_tune["fold"].iloc[i_test].value_counts()
     print(np.sort(i_train))
     print(np.sort(i_test))
     '''

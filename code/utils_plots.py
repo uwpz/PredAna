@@ -636,7 +636,7 @@ def plot_cate_REGR(ax,
     df_plot = helper_calc_barboxwidth(feature, np.tile("dummy", len(feature)),
                                       min_width=min_width)
 
-    # Barplot
+    # Boxplot
     _ = ax.boxplot([target[feature == value] for value in df_plot[feature.name].values],
                    labels=df_plot[feature.name + "_fmt"].values,
                    widths=df_plot["w"].values,
@@ -674,6 +674,7 @@ def plot_nume_CLASS(ax,
                     inset_size=0.2, n_bins=20,
                     title=None,
                     add_miss_info=True,
+                    rasterized=True,
                     color=list(sns.color_palette("colorblind").as_hex()),
                     **_):
 
@@ -705,6 +706,7 @@ def plot_nume_CLASS(ax,
     sns.boxplot(ax=inset_ax, x=feature, y=target, order=np.sort(target.unique()), orient="h", palette=color,
                 showmeans=True, meanprops={"marker": "x", "markerfacecolor": "black", "markeredgecolor": "black"})
     _ = ax.set_yticks(yticks[(yticks >= ylim[0]) & (yticks <= ylim[1])])
+    ax.set_rasterized(rasterized)
 
     # Add missing information
     if add_miss_info:
@@ -722,6 +724,7 @@ def plot_nume_MULTICLASS(ax,
                          inset_size=0.2, n_bins=20,
                          title=None,
                          add_miss_info=True,
+                         rasterized=True,
                          color=list(sns.color_palette("colorblind").as_hex()),
                          **_):
 
@@ -729,7 +732,7 @@ def plot_nume_MULTICLASS(ax,
                     feature_name=feature_name, target_name=target_name,
                     feature_lim=feature_lim,
                     inset_size=inset_size, n_bins=n_bins,
-                    title=title, add_miss_info=add_miss_info,
+                    title=title, add_miss_info=add_miss_info, rasterized=rasterized,
                     color=color, **_)
 
 
@@ -744,7 +747,8 @@ def plot_nume_REGR(ax,
                    add_miss_info=True,
                    add_colorbar=True,
                    inset_size=0.2,
-                   add_feature_distribution=True, add_target_distribution=True, n_bins=20, add_boxplot=True,
+                   add_feature_distribution=True, add_target_distribution=True, n_bins=20, 
+                   add_boxplot=True, rasterized=True,
                    colormap=LinearSegmentedColormap.from_list("bl_yl_rd", ["blue", "yellow", "red"]),
                    **_):
 
@@ -881,6 +885,7 @@ def plot_nume_REGR(ax,
                                                    "markerfacecolor": "white", "markeredgecolor": "white"},
                         ax=inset_inset_ax_y)
             inset_inset_ax_y.set_ylim(ylim)
+            inset_inset_ax_y.set_rasterized(rasterized)
 
             # More space for plot
             left, right = inset_inset_ax_y.get_xlim()
@@ -940,6 +945,7 @@ def plot_nume_REGR(ax,
                                                    "markeredgecolor": "white"},
                         ax=inset_inset_ax_x)
             inset_inset_ax_x.set_xlim(xlim)
+            inset_inset_ax_y.set_rasterized(rasterized)
 
             # More space for plot
             left, right = inset_inset_ax_x.get_ylim()
@@ -964,7 +970,7 @@ def plot_feature_target(ax,
                         min_width=0.2, inset_size=0.2, refline=True, n_bins=20,
                         regplot=True, regplot_type="lowess", lowess_n_sample=1000, lowess_frac=2 / 3, spline_smooth=1, 
                         add_colorbar=True,
-                        add_feature_distribution=True, add_target_distribution=True, add_boxplot=True,
+                        add_feature_distribution=True, add_target_distribution=True, add_boxplot=True, rasterized=True,
                         title=None,
                         add_miss_info=True,
                         color=list(sns.color_palette("colorblind").as_hex()),
@@ -987,7 +993,7 @@ def plot_feature_target(ax,
                   lowess_n_sample=lowess_n_sample, lowess_frac=lowess_frac, spline_smooth=spline_smooth, 
                   add_colorbar=add_colorbar,
                   add_feature_distribution=add_feature_distribution, add_target_distribution=add_target_distribution,
-                  add_boxplot=add_boxplot,
+                  add_boxplot=add_boxplot, rasterized=rasterized,
                   title=title,
                   add_miss_info=add_miss_info,
                   color=color,
@@ -2099,23 +2105,24 @@ def get_plotcalls_model_performance(y, yhat, target_type=None,
 # Plot permutation base variable importance
 def plot_variable_importance(ax,
                              features, importance,
-                             importance_cum=None, importance_se=None, max_score_diff=None,
+                             importance_cum=None, importance_mean=None, importance_se=None, max_score_diff=None,
                              category=None,
                              category_label="Importance",
-                             category_color_palette=sns.xkcd_palette(["blue", "orange", "red"])):
+                             category_color_palette=sns.xkcd_palette(["blue", "orange", "red"]),
+                             color_error="grey"):
 
     sns.barplot(x=importance, y=features, hue=category,
                 palette=category_color_palette, dodge=False, ax=ax)
     ax.set_title("Top{0: .0f} Feature Importances".format(len(features)))
     ax.set_xlabel(r"permutation importance")
     if max_score_diff is not None:
-        ax.set_xlabel(ax.get_xlabel() + "(100 = " + str(max_score_diff) + r" score-$\Delta$)")
+        ax.set_xlabel(ax.get_xlabel() + " (100 = " + str(max_score_diff) + r" score-$\Delta$)")
     if importance_cum is not None:
         ax.plot(importance_cum, features, color="black", marker="o")
         ax.set_xlabel(ax.get_xlabel() + " /\n" + r"cumulative in % (-$\bullet$-)")
     if importance_se is not None:
-        ax.errorbar(x=importance, y=features, xerr=importance_se,
-                    linestyle="none", marker="s", fillstyle="none", color="grey")
+        ax.errorbar(x=importance_mean if importance_mean is not None else importance, y=features, xerr=importance_se,
+                    linestyle="none", marker="s", fillstyle="none", color=color_error)
         ax.set_title(ax.get_title() + r" (incl. SE (-$\boxminus$-))")
 
     '''

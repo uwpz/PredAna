@@ -150,8 +150,9 @@ for TARGET_TYPE in TARGET_TYPES:
 print(time.time() - start)
     
 # Winsorize (hint: plot again before deciding for log-trafo)
+#%%
 df[nume] = up.Winsorize(lower_quantile=None, upper_quantile=0.99).fit_transform(df[nume])
-
+#%%
 # Log-Transform
 tolog = ["temp"]
 if len(tolog):
@@ -175,7 +176,7 @@ print(onebin)
 # --- Final variable information ---------------------------------------------------------------------------------------
 
 for TARGET_TYPE in TARGET_TYPES:
-    #TARGET_TYPE = "REGR"
+    #TARGET_TYPE = "CLASS"
     
     # Univariate variable performances
     varperf_nume = df[nume + nume_BINNED].swifter.progress_bar(False).apply(lambda x: (
