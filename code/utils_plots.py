@@ -13,6 +13,8 @@ from joblib import Parallel, delayed
 import copy
 import warnings
 import time
+from typing import Union, Literal
+import inspect
 
 # Scikit
 from sklearn.metrics import (make_scorer, roc_auc_score, accuracy_score, roc_curve, confusion_matrix,
@@ -44,6 +46,7 @@ from statsmodels.nonparametric.smoothers_lowess import lowess
 
 # --- General ----------------------------------------------------------------------------------------
 
+'''
 def debugtest(a=1, b=2):
     print(a)
     print(b)
@@ -53,37 +56,59 @@ def debugtest(a=1, b=2):
     print(1)
     print(2)
     return "done"
+'''
+
+def tmp(a: pd.DataFrame, b: Literal["bub", "kahg"]) -> list:
+    """
+    Print summary of (categorical) varibles (similar to R's summary function)
+    
+    Parameters
+    ----------
+    par1: Dataframe 
+        Dataframe comprising columns to be summarized
+    par2: int
+        Restrict number of member listings 
+        
+    Returns
+    ------- 
+    dataframe which comprises summary of variables
+    """
+    pass
 
 
-def diff(a, b):
+def diff(a, b) -> Union[list, np.ndarray]:  
+    """ Creates setdiff i.e. a_not_in_b for arrays or lists """
     a_not_b = np.setdiff1d(a, b, True)
     if (type(a) is list and type(b) is list):
         a_not_b = list(a_not_b)
     return a_not_b
 
 
-def add(a, b):
+def add(a, b) -> list:
+    """
+    Provide concatenation of suffix or prefix to every list element, similar to "a"+b or a+"b" for object arrays
+    """
     if type(a) is str:
         return [a + x for x in b]
     if type(b) is str:
         return [x + b for x in a]        
-
+  
 
 def interleave(a, b):
+    """ Interleaves two lists, i.e. returns [a[0], b[0], a[1], b[1], ...] """
     return [x for tup in zip(a, b) for x in tup]
 
-
-def logit(p):
+'''
+def logit(p: float) -> float:
     return(np.log(p / (1 - p)))
 
 
 def inv_logit(p):
     return np.exp(p) / (1 + np.exp(p))
+'''
 
-
-# Show closed figure again
 def show_figure(fig):
-    # create a dummy figure and use its manager to display "fig"
+    """ Creates a dummy figure and uses its manager to display closed 'fig' """
     dummy = plt.figure()
     new_manager = dummy.canvas.manager
     new_manager.canvas.figure = fig
@@ -92,8 +117,32 @@ def show_figure(fig):
 
 # Plot list of tuples (plot_call, kwargs)
 def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None, constrained_layout=False):
+    """
+    Plot list of tuples (plot_function, {kwargs}) with plot_function must have 'ax' parameter like
+    seaborn or pandas plots
+    
+    Parameters
+    ----------
+    l_calls: list 
+        List of tuples, e.g.
+        [(sns.histplot, {"x": np.random.normal(size=100), "kde": True}),
+         (sns.lineplot, {"x": np.arange(10), "y": np.arange(10)})]
+    n_cols, n_rows: int
+        Number of cols and rows in grid layout
+    figsize: tuple(int, int)
+        Width and height of plot in inches
+    pdf_path: str
+        Location of pdf (optional)
+    constrained_layout: bool
+        Use as alternative to tight_layout?
+        
+    Returns
+    ------- 
+    List of pages as tuples (figure of page, axes of figure)
+    """
 
     # Open pdf
+    
     if pdf_path is not None:
         pdf_pages = PdfPages(pdf_path)
     else:
@@ -133,62 +182,65 @@ def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None, c
     return l_fig
 
 
-# --- Metrics ----------------------------------------------------------------------------------------
+# --- Metrics for sklearn scorer -----------------------------------------------------------------------------
 
 # Regr
 
-def spear(y_true, y_pred):
-    # Also for classification
-    if y_pred.ndim == 2:
-        if y_pred.shape[1] == 2:
-            y_pred = y_pred[:, 1]
-    return pd.DataFrame({"y_true": y_true, "y_pred": y_pred}).corr(method="spearman").values[0, 1]
+def reduce2prob(y_pred):
+    """ Reduce prediction matrix to 1-dim-array comprising probability of "1"-class """
+    if (y_pred.ndim == 2) & (y_pred.shape[1] == 2):
+        return y_pred[:, 1]
+    else: 
+        return y_pred
+
+def spear(y_true, y_pred) -> float:
+    """ Spearman correlation (working also for classification tasks) """
+    y_pred = reduce2prob(y_pred)  # Catch classification case
+    spear = pd.DataFrame({"y_true": y_true, "y_pred": y_pred}).corr(method="spearman").values[0, 1]
+    return spear
 
 
-def pear(y_true, y_pred):
-    # Also for classification
-    if y_pred.ndim == 2:
-        if y_pred.shape[1] == 2:
-            y_pred = y_pred[:, 1]
-    return pd.DataFrame({"y_true": y_true, "y_pred": y_pred}).corr(method="pearson").values[0, 1]
+def pear(y_true, y_pred) -> float:
+    """ Pearson correlation (working also for classification tasks) """
+    y_pred = reduce2prob(y_pred)  # Catch classification case
+    pear = pd.DataFrame({"y_true": y_true, "y_pred": y_pred}).corr(method="pearson").values[0, 1]
+    return pear
 
 
-def rmse(y_true, y_pred):
+def rmse(y_true, y_pred) -> float:
+    """ Root mean squared error """
     return np.sqrt(np.mean(np.power(y_true - y_pred, 2)))
 
 
-def ame(y_true, y_pred):
+def ame(y_true, y_pred) -> float:
+    """ Absolute mean error"""
     return np.abs(np.mean(y_true - y_pred))
 
 
-# Mean absolute error
-def mae(y_true, y_pred):
+def mae(y_true, y_pred) -> float:
+    """ Mean absolute error """
     return np.mean(np.abs(y_true - y_pred))
-
-# def myrmse(y_true, y_pred):
-#    return np.sqrt(np.mean(np.power(y_true + 0.03 - y_pred, 2)))
 
 
 # Class + Multiclass
 
-def auc(y_true, y_pred):
-    if y_pred.ndim == 2:
-        if y_pred.shape[1] == 2:
-            y_pred = y_pred[:, 1]
+def auc(y_true, y_pred) -> float:
+    """ AUC (working also for regression task which is basically the concordance) """
+    
+    # Usually y_pred is a matrix, so reduce it to 1-dim array
+    y_pred = reduce2prob(y_pred)
 
-    # Also for regression
-    if y_pred.ndim == 1:
-        if (np.min(y_pred) < 0) | (np.max(y_pred) > 1):
-            y_pred = MinMaxScaler().fit_transform(y_pred.reshape(-1, 1))[:, 0]
-    if y_true.ndim == 1:
-        if type_of_target(y_true) == "continuous":
-            if np.max(y_true) > 1:
-                y_true = np.where(y_true > 1, 1, np.where(y_true < 1, 0, y_true))
+    # Regression case
+    if (y_true.ndim == 1) & (type_of_target(y_true) == "continuous"):
+        y_pred = MinMaxScaler().fit_transform(y_pred.reshape(-1, 1))[:, 0]
+        y_true = MinMaxScaler().fit_transform(y_true)   
 
-    return roc_auc_score(y_true, y_pred, multi_class="ovr")
+    auc = roc_auc_score(y_true, y_pred, multi_class="ovr")
+    return auc
 
 
 def acc(y_true, y_pred):
+    """ Accuracy """
     if y_pred.ndim > 1:
         y_pred = y_pred.argmax(axis=1)
     if y_true.ndim > 1:
@@ -222,27 +274,27 @@ def value_counts(df, topn=5, dtypes=None):
     ----------
     df: Dataframe 
         Dataframe comprising columns to be summarized
-    topn: integer, default=5
+    topn: integer
         Restrict number of member listings
-    dtype: list, default=["object"]
-        Determines Which dtypes should be summarized.  
+    dtype: list or None, default=["object"]
+        None or list of dtypes (e.g. ["object"]) to filter. 
         
     Returns
     ------- 
     dataframe which comprises summary of variables
     """
     if dtypes is not None:
-        df_tmp = df.select_dtypes(dtypes)
+        df_select = df.select_dtypes(dtypes)
     else:
-        df_tmp = df
-    return pd.concat([(df_tmp[catname].value_counts().iloc[: topn].reset_index()
+        df_select = df
+    return pd.concat([(df_select[catname].value_counts().iloc[: topn].reset_index()
                        .rename(columns={"index": catname, catname: "#"}))
-                      for catname in df_tmp.columns.values],
+                      for catname in df_select.columns.values],
                      axis=1).fillna("")
 
 
 # Binning with correct label
-def bin(feature, n_bins=5, precision=3):
+def bin(feature, n_bins: int=5, precision=3):
     feature_binned = pd.qcut(feature, n_bins, duplicates="drop", precision=precision)
     feature_binned = ("q" + feature_binned.cat.codes.astype("str") + " " +
                       feature_binned.astype("str").str.replace("\(" + str(feature_binned.cat.categories[0].left),
@@ -265,16 +317,16 @@ def variable_performance(feature, target, scorer, target_type=None, splitter=KFo
         Feature for which to calculate importance
     target: Numpy array or Pandas series
         Target variable
-    scorer: skleran.metrics scorer        
+    scorer: sklearn.metrics scorer        
     target_type: "CLASS", "REGR", "MULTICLASS", None, default=None
-        Overwrites function's determination of target type
-    splitter: sklearn.model_selection splitter, default=KFold(5)
+        Overwrites function's determination of target type (if not None)
+    splitter: sklearn.model_selection splitter
     groups: Numpy array or Pandas series
         Grouping variable in case of using Grouped splitter
     
     Returns
     -------
-    Numeric value representing scoring value
+    Numeric value representing scoring result
     """
 
     # Drop all missings

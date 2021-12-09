@@ -5,6 +5,7 @@
 # --- Packages --------------------------------------------------------------------------
 
 # General
+from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np 
 import pandas as pd
 from pandas.core.indexes.api import all_indexes_same 
@@ -23,18 +24,16 @@ from sklearn.model_selection import KFold, ShuffleSplit, PredefinedSplit
 import utils_plots as up
 
 # Setting
-import settings as sett
+import settings as s
 
 
 # --- Parameter --------------------------------------------------------------------------
 
 # Plot 
-plot = True
-%matplotlib 
-#%matplotlib qt / %matplotlib inline  # activate standard/inline window
-plt.ioff()  # / plt.ion()  # stop/start standard window
-#plt.plot(1, 1)
-#%config Completer.use_jedi = False
+PLOT = True  # Flag helping to skip all plotting (and only process data)
+# Interactive plotting: use "%matplotlib" to deactivate and "%natplotlib inline" for inline plotting and ...
+# ... use "%matpltlib qt" for standard interactive window (then use "plt.ioff()/ion()" to deactivate/activate)
+%matplotlib
 
 # Specific parameters 
 TARGET_TYPES = ["REGR", "CLASS", "MULTICLASS"]
@@ -44,11 +43,11 @@ TARGET_TYPES = ["REGR", "CLASS", "MULTICLASS"]
 # ETL
 ########################################################################################################################
 
-# --- Read data and adapt to be more readable --------------------------------------------------------------------------
+# --- Read data and adapt  ---------------------------------------------------------------------------------------------
 
-# Read and adapt
+# Read data and adapt to be more readable
 
-df_orig = (pd.read_csv(sett.dataloc + "hour.csv", parse_dates=["dteday"])
+df_orig = (pd.read_csv(s.DATALOC + "hour.csv", parse_dates=["dteday"])
            .replace({"season": {1: "1_winter", 2: "2_spring", 3: "3_summer", 4: "4_fall"},
                      "yr": {0: "2011", 1: "2012"},
                      "holiday": {0: "No", 1: "Yes"},
@@ -62,7 +61,7 @@ df_orig = (pd.read_csv(sett.dataloc + "hour.csv", parse_dates=["dteday"])
                    windspeed=lambda x: x["windspeed"] * 67)
            .assign(kaggle_fold=lambda x: np.where(x["dteday"].dt.day >= 20, "test", "train")))
 
-# Create some artifacts
+# Create some artifacts helping to illustrate important concepts
 df_orig["high_card"] = df_orig["hum"].astype('str')  # high cardinality categorical variable
 df_orig["weathersit"] = df_orig["weathersit"].where(df_orig["weathersit"] != "heavy rain", np.nan)  # some missings
 df_orig["windspeed"] = df_orig["windspeed"].where(df_orig["windspeed"] != 0, other=np.nan)  # some missings
@@ -89,15 +88,15 @@ np.log(df_orig["cnt"]).plot.hist(bins=50, ax=ax[2])
 df = df_orig.copy()
 
 
-# --- Read metadata (Project specific) ---------------------------------------------------------------------------------
+# --- Get metadata information -----------------------------------------------------------------------------------------
 
-df_meta = pd.read_excel(sett.dataloc + "datamodel_bikeshare.xlsx", header=1, engine='openpyxl')
+df_meta = pd.read_excel(s.DATALOC + "datamodel_bikeshare.xlsx", header=1, engine='openpyxl')
 
-# Check
+# Check difference of metainfo to data
 print(up.diff(df.columns, df_meta["variable"]))
 print(up.diff(df_meta.query("category == 'orig'").variable, df.columns))
 
-# Filter on "ready"
+# Subset on data that is "ready" to get processes
 df_meta_sub = df_meta.query("status in ['ready']").reset_index()
 
 
@@ -105,7 +104,7 @@ df_meta_sub = df_meta.query("status in ['ready']").reset_index()
 
 df["day_of_month"] = df['dteday'].dt.day.astype("str").str.zfill(2)
 
-# Check again
+# Check metadata again
 print(up.diff(df_meta_sub["variable"], df.columns))
 
 
@@ -141,8 +140,8 @@ nume = up.diff(nume, remove)  # adapt metadata
 df[nume].describe()
 start = time.time()
 for TARGET_TYPE in TARGET_TYPES:
-    if plot:
-        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume_orig__" + TARGET_TYPE + ".pdf",
+    if PLOT:
+        _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__distr_nume_orig__" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], 
                                            target=df["cnt_" + TARGET_TYPE])) 
@@ -185,8 +184,8 @@ for TARGET_TYPE in TARGET_TYPES:
     print(varperf_nume.sort_values(ascending=False))
     
     # Plot
-    if plot:
-        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume__" + TARGET_TYPE + "3.pdf", 
+    if PLOT:
+        _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__distr_nume__" + TARGET_TYPE + "3.pdf", 
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], target=df["cnt_" + TARGET_TYPE], 
                                            title=feature + " (VI: " + format(varperf_nume[feature], "0.2f") + ")",
@@ -202,7 +201,7 @@ nume = up.diff(nume, remove)
 
 # Remove highly/perfectly (>=98%) correlated (the ones with less NA!)
 df[nume].describe()
-_ = up.plot_l_calls(pdf_path=sett.plotloc + "1__corr_nume.pdf", n_rows=1, n_cols=1, figsize=(6, 6),
+_ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__corr_nume.pdf", n_rows=1, n_cols=1, figsize=(6, 6),
                     l_calls=[(up.plot_corr,
                               dict(df=df[nume], method="spearman", cutoff=0))])
 remove = [""]
@@ -222,8 +221,8 @@ varperf_nume_fold = df[nume].swifter.apply(lambda x: up.variable_performance(x, 
 # Plot: only variables with with highest importance
 nume_toplot = varperf_nume_fold[varperf_nume_fold > 0.53].index.values
 if len(nume_toplot):
-    if plot:
-        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_nume_folddep" + TARGET_TYPE + ".pdf",
+    if PLOT:
+        _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__distr_nume_folddep" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], target=df["fold"],
                                            title=feature + " (VI: " + format(varperf_nume_fold[feature], "0.2f") + ")",
@@ -299,8 +298,8 @@ for TARGET_TYPE in TARGET_TYPES:
     print(varperf_cate.sort_values(ascending=False))
 
     # Check
-    if plot:
-        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_cate__" + TARGET_TYPE + ".pdf",
+    if PLOT:
+        _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__distr_cate__" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature],
                                            target=df["cnt_" + TARGET_TYPE],
@@ -317,11 +316,11 @@ cate = up.diff(cate, ["xxx"])
 toomany = up.diff(toomany, ["xxx"])
 
 # Remove highly/perfectly (>=99%) correlated (the ones with less levels!)
-_ = up.plot_l_calls(pdf_path=sett.plotloc + "1__corr_cate.pdf", n_rows=1, n_cols=1, figsize=(8, 6),
+_ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__corr_cate.pdf", n_rows=1, n_cols=1, figsize=(8, 6),
                     l_calls=[(up.plot_corr,
                               dict(df=df[cate + up.add("MISS_", miss)], method="cramersv", cutoff=0))])
 '''
-_ = up.plot_l_calls(pdf_path=sett.plotloc + "1__corr.pdf", n_rows=1, n_cols=1, figsize=(8, 6),
+_ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__corr.pdf", n_rows=1, n_cols=1, figsize=(8, 6),
                     l_calls=[(up.plot_corr,
                               dict(df=df[cate + up.add("MISS_", miss) + up.add(nume,"_BINNED")], 
                                    method="cramersv", cutoff=0))])
@@ -340,8 +339,8 @@ varperf_cate_fold = df[cate + up.add("MISS_", miss)].swifter.apply(lambda x: (
 # Plot: only variables with with highest importance
 cate_toplot = varperf_cate_fold[varperf_cate_fold > 0.52].index.values
 if len(cate_toplot):
-    if plot:
-        _ = up.plot_l_calls(pdf_path=sett.plotloc + "1__distr_cate_folddep" + TARGET_TYPE + ".pdf",
+    if PLOT:
+        _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__distr_cate_folddep" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature],
                                            target=df["fold"],
@@ -389,7 +388,7 @@ plt.close(fig="all")  # plt.close(plt.gcf())
 del df_orig
 
 # Serialize
-with open(sett.dataloc + "1_explore.pkl", "wb") as file:
+with open(s.DATALOC + "1_explore.pkl", "wb") as file:
     pickle.dump({"df": df,
                  "nume_standard": nume_standard,
                  "cate_standard": cate_standard,

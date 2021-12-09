@@ -21,18 +21,18 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor  # , 
 from sklearn.linear_model import SGDClassifier, SGDRegressor, LogisticRegression, ElasticNet
 import xgboost as xgb
 import lightgbm as lgbm
-from keras.models import Sequential
-from keras.layers import Dense, BatchNormalization, Dropout
-from keras.regularizers import l2
-from keras import optimizers
-from keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, BatchNormalization, Dropout
+from tensorflow.keras.regularizers import l2
+from tensorflow.keras import optimizers
+from tensorflow.keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
 #  from sklearn.tree import DecisionTreeRegressor, plot_tree , export_graphviz
 
 # Custom functions and classes
 import utils_plots as up
 
 # Setting
-import settings as sett
+import settings as s
 
 
 # --- Parameter --------------------------------------------------------------------------
@@ -47,7 +47,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
     # Load results from exploration
     df = nume_standard = cate_standard = cate_binned = nume_encoded = None
-    with open(sett.dataloc + "1_explore.pkl", "rb") as file:
+    with open(s.DATALOC + "1_explore.pkl", "rb") as file:
         d_pick = pickle.load(file)
     for key, val in d_pick.items():
         exec(key + "= val")
@@ -123,12 +123,12 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                         refit=False,
                         scoring=scoring,
                         return_train_score=True,
-                        n_jobs=sett.n_jobs)
+                        n_jobs=s.N_JOBS)
            .fit(X=X_binned,
                 y=df_tune[target_name]))
     # Plot: use metric="score" if scoring has only 1 metric
     fig = up.plot_cvresults(fit.cv_results_, metric=metric, x_var="alpha", color_var="l1_ratio")
-    fig.savefig(sett.plotloc + "2__tune_sgd__" + TARGET_TYPE + ".pdf")
+    fig.savefig(s.PLOTLOC + "2__tune_sgd__" + TARGET_TYPE + ".pdf")
 
     # Usually better alternative
     if TARGET_TYPE in ["CLASS", "MULTICLASS"]:
@@ -138,11 +138,11 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                             refit=False,
                             scoring=scoring,
                             return_train_score=True,
-                            n_jobs=sett.n_jobs)
+                            n_jobs=s.N_JOBS)
                .fit(X=X_binned,
                     y=df_tune[target_name]))
         fig = up.plot_cvresults(fit.cv_results_, metric=metric, x_var="C")
-        fig.savefig(sett.plotloc + "2__tune_lasso__" + TARGET_TYPE + ".pdf")
+        fig.savefig(s.PLOTLOC + "2__tune_lasso__" + TARGET_TYPE + ".pdf")
     else:
         fit = (GridSearchCV(ElasticNet(),
                             {"alpha": [2 ** x for x in range(-8, -20, -2)],
@@ -151,11 +151,11 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                             refit=False,
                             scoring=scoring,
                             return_train_score=True,
-                            n_jobs=sett.n_jobs)
+                            n_jobs=s.N_JOBS)
                .fit(X=X_binned,
                     y=df_tune[target_name]))
         fig = up.plot_cvresults(fit.cv_results_, metric=metric, x_var="alpha", color_var="l1_ratio")
-        fig.savefig(sett.plotloc + "2__tune_enet__" + TARGET_TYPE + ".pdf")
+        fig.savefig(s.PLOTLOC + "2__tune_enet__" + TARGET_TYPE + ".pdf")
 
 
     # --- Random Forest ------------------------------------------------------------------------------------------------
@@ -169,12 +169,12 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                         scoring=scoring,
                         return_train_score=True,
                         # use_warm_start=["n_estimators"],
-                        n_jobs=sett.n_jobs)
+                        n_jobs=s.N_JOBS)
            .fit(X=X_standard,
                 y=df_tune[target_name]))
     fig = up.plot_cvresults(fit.cv_results_, metric=metric,
                             x_var="n_estimators", color_var="min_samples_leaf")
-    fig.savefig(sett.plotloc + "2__tune_rforest__" + TARGET_TYPE + ".pdf")
+    fig.savefig(s.PLOTLOC + "2__tune_rforest__" + TARGET_TYPE + ".pdf")
 
 
     # --- XGBoost ------------------------------------------------------------------------------------------------------
@@ -187,13 +187,13 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                                 refit=False,
                                 scoring=scoring,  # must be dict here
                                 return_train_score=True,
-                                n_jobs=sett.n_jobs)
+                                n_jobs=s.N_JOBS)
            .fit(X=X_standard,
                 y=df_tune[target_name]))
     print(time.time() - start)
     fig = up.plot_cvresults(fit.cv_results_, metric=metric,
                             x_var="n_estimators", color_var="max_depth", column_var="min_child_weight")
-    fig.savefig(sett.plotloc + "2__tune_xgb__" + TARGET_TYPE + ".pdf")
+    fig.savefig(s.PLOTLOC + "2__tune_xgb__" + TARGET_TYPE + ".pdf")
 
 
     # --- LightGBM -----------------------------------------------------------------------------------------------------
@@ -212,14 +212,14 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                                 refit=False,
                                 scoring=scoring,
                                 return_train_score=True,
-                                n_jobs=sett.n_jobs)
+                                n_jobs=s.N_JOBS)
            .fit(X_standard,
                 categorical_feature=i_cate_standard,
                 y=df_tune[target_name]))
     print(time.time() - start)
     fig = up.plot_cvresults(fit.cv_results_, metric=metric,
                             x_var="n_estimators", color_var="num_leaves", column_var="min_child_samples")
-    fig.savefig(sett.plotloc + "2__tune_lgbm__" + TARGET_TYPE + ".pdf")
+    fig.savefig(s.PLOTLOC + "2__tune_lgbm__" + TARGET_TYPE + ".pdf")
 
 
     # --- DeepL --------------------------------------------------------------------------------------------------------
@@ -286,13 +286,13 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                         refit=False,
                         scoring=scoring,
                         return_train_score=True,
-                        n_jobs=sett.n_jobs)
+                        n_jobs=s.N_JOBS)
            .fit(X_standard.todense() if TARGET_TYPE == "REGR" else X_standard,  # TODO Bugcheck: Why not sparse for REGR???
                 y=(pd.get_dummies(df_tune[target_name]) if TARGET_TYPE == "MULTICLASS" else
                 df_tune[target_name])))
     fig = up.plot_cvresults(fit.cv_results_, metric=metric,
                             x_var="epochs", color_var="batch_normalization", column_var="activation", row_var="size")
-    fig.savefig(sett.plotloc + "2__tune_deepl__" + TARGET_TYPE + ".pdf")
+    fig.savefig(s.PLOTLOC + "2__tune_deepl__" + TARGET_TYPE + ".pdf")
 
 
 
@@ -314,13 +314,13 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                                refit=metric,
                                scoring=scoring,
                                return_train_score=False,
-                               n_jobs=sett.n_jobs),
+                               n_jobs=s.N_JOBS),
         X=X_binned,
         y=df_tune[target_name],
         cv=cv_5foldsep.split(df_tune, test_fold=(df_tune["fold"] == "test")),
         scoring=scoring,
         return_train_score=False,
-        n_jobs=sett.n_jobs)
+        n_jobs=s.N_JOBS)
     df_modelcomp_result = df_modelcomp_result.append(pd.DataFrame.from_dict(cvresults).reset_index()
                                                      .assign(model="ElasticNet"),
                                                      ignore_index=True)
@@ -336,13 +336,13 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
             refit=metric,
             scoring=scoring,
             return_train_score=False,
-            n_jobs=sett.n_jobs),
+            n_jobs=s.N_JOBS),
         X=X_standard,
         y=df_tune[target_name],
         cv=cv_5foldsep.split(df_tune, test_fold=(df_tune["fold"] == "test")),
         scoring=scoring,
         return_train_score=False,
-        n_jobs=sett.n_jobs)
+        n_jobs=s.N_JOBS)
     df_modelcomp_result = df_modelcomp_result.append(pd.DataFrame.from_dict(cvresults).reset_index()
                                                      .assign(model="XGBoost"),
                                                      ignore_index=True)
@@ -358,14 +358,14 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
             refit=metric,
             scoring=scoring,
             return_train_score=False,
-            n_jobs=sett.n_jobs),
+            n_jobs=s.N_JOBS),
         X=X_standard,
         y=df_tune[target_name],
         fit_params=dict(categorical_feature=i_cate_standard),
         cv=cv_5foldsep.split(df_tune, test_fold=(df_tune["fold"] == "test")),
         scoring=scoring,
         return_train_score=False,
-        n_jobs=sett.n_jobs)
+        n_jobs=s.N_JOBS)
     df_modelcomp_result = df_modelcomp_result.append(pd.DataFrame.from_dict(cvresults).reset_index()
                                                      .assign(model="Lgbm"),
                                                      ignore_index=True)
@@ -376,7 +376,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     up.plot_modelcomp(ax, df_modelcomp_result.rename(columns={"index": "run", "test_" + metric: metric}),
                       scorevar=metric)
-    fig.savefig(sett.plotloc + "2__model_comparison__" + TARGET_TYPE + ".pdf")
+    fig.savefig(s.PLOTLOC + "2__model_comparison__" + TARGET_TYPE + ".pdf")
 
 
 
@@ -395,16 +395,16 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
             refit=metric,
             scoring=scoring,
             return_train_score=False,
-            n_jobs=sett.n_jobs),
+            n_jobs=s.N_JOBS),
         X=X_standard,
         y=df_tune[target_name],
         train_sizes=np.arange(0.1, 1.1, 0.2),
         cv=cv_5fold.split(df_tune),
         scoring=scoring[metric],
         return_times=True,
-        n_jobs=sett.n_jobs)
+        n_jobs=s.N_JOBS)
 
     # Plot it
     fig, ax = plt.subplots(1, 1, figsize=(6, 6))
     up.plot_learningcurve(ax, n_train, score_train, score_test, time_train)
-    fig.savefig(sett.plotloc + "2__learningCurve__" + TARGET_TYPE + ".pdf")
+    fig.savefig(s.PLOTLOC + "2__learningCurve__" + TARGET_TYPE + ".pdf")

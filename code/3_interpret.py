@@ -52,7 +52,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
     # Load results from exploration
     df = nume_standard = cate_standard = cate_binned = nume_encoded = None
-    with open(sett.dataloc + "1_explore.pkl", "rb") as file:
+    with open(s.DATALOC + "1_explore.pkl", "rb") as file:
         d_pick = pickle.load(file)
     for key, val in d_pick.items():
         exec(key + "= val")
@@ -65,7 +65,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                      colsample_bytree=0.7, subsample=0.7,
                      gamma=0,
                      verbosity=0,
-                     n_jobs=sett.n_jobs,
+                     n_jobs=s.N_JOBS,
                      use_label_encoder=False)
 
 
@@ -142,7 +142,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
             y=df_test[target_name],
             yhat=yhat_test, target_labels=target_labels)
         _ = up.plot_l_calls(l_calls=d_calls.values(), n_cols=3, n_rows=2,
-                            pdf_path=sett.plotloc + "3__performance__" + TARGET_TYPE + ".pdf")
+                            pdf_path=s.PLOTLOC + "3__performance__" + TARGET_TYPE + ".pdf")
 
     # Check performance for crossvalidated fits
     d_cv = cross_validate(model, df_traintest[features], df_traintest[target_name],
@@ -150,7 +150,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                               df_traintest["fold"] == "test")),  # special 5fold
                           scoring=scoring,
                           return_estimator=True,
-                          n_jobs=sett.n_jobs)
+                          n_jobs=s.N_JOBS)
     print(d_cv["test_" + metric], " \n", np.mean(d_cv["test_" + metric]), np.std(d_cv["test_" + metric]))
 
 
@@ -159,7 +159,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     # Variable importance (on train data!)
     df_varimp_train = up.variable_importance(model, df_train[features], df_train[target_name], features,
                                              scoring=scoring[metric],
-                                             random_state=42, n_jobs=sett.n_jobs)
+                                             random_state=42, n_jobs=s.N_JOBS)
     # Scikit's VI: permuatation_importance("same parameter but remove features argument and add n_repeats=1")
 
     # Top features (importances sum up to 95% of whole sum)
@@ -185,7 +185,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
         if plot:
             d_calls = up.get_plotcalls_model_performance(y=df_test[target_name], yhat=yhat_top)
             _ = up.plot_l_calls(l_calls=d_calls.values(), n_cols=3, n_rows=2,
-                                pdf_path=sett.plotloc + "3__performance_top__" + TARGET_TYPE + ".pdf")
+                                pdf_path=s.PLOTLOC + "3__performance_top__" + TARGET_TYPE + ".pdf")
 
 
 
@@ -206,21 +206,21 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
     # For non-regr tasks one might want to plot it for each target level (df_test.query("target == 0/1"))
     if plot:
-        _ = up.plot_l_calls(pdf_path=sett.plotloc + "3__diagnosis_residual__" + TARGET_TYPE + ".pdf",
+        _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "3__diagnosis_residual__" + TARGET_TYPE + ".pdf",
                             n_cols=3, n_rows=2, figsize=(18, 12),
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df_test[feature], target=df_test["residual"],
-                                           add_miss_info=False, color=sett.colorblind[3]))
+                                           add_miss_info=False, color=s.COLORBLIND[3]))
                                      for feature in up.diff(features_top_train, "day_of_month_ENCODED")])
 
     # Absolute residuals
     if TARGET_TYPE == "REGR":
         if plot:
-            _ = up.plot_l_calls(pdf_path=sett.plotloc + "3__diagnosis_absolute_residual__" + TARGET_TYPE + ".pdf",
+            _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "3__diagnosis_absolute_residual__" + TARGET_TYPE + ".pdf",
                                 n_cols=3, n_rows=2, figsize=(18, 12),
                                 l_calls=[(up.plot_feature_target,
                                           dict(feature=df_test[feature], target=df_test["abs_residual"],
-                                               add_miss_info=False, color=sett.colorblind[3]))
+                                               add_miss_info=False, color=s.COLORBLIND[3]))
                                          for feature in up.diff(features_top_train, "day_of_month_ENCODED")])
 
 
@@ -239,7 +239,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     # Importance (on test data!)
     df_varimp_test = up.variable_importance(model, df_test[features], df_test[target_name], features,
                                             scoring=scoring[metric],
-                                            random_state=42, n_jobs=sett.n_jobs)
+                                            random_state=42, n_jobs=s.N_JOBS)
     features_top_test = df_varimp_test.loc[df_varimp_test["importance_cum"] < 95, "feature"].values
 
     # Compare variable importance for train and test (hints to variables prone to overfitting)
@@ -256,7 +256,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
         df_varimp_test_cv = df_varimp_test_cv.append(
             up.variable_importance(d_cv["estimator"][i], df_tmp[features], df_tmp[target_name], features_top_test,
                                    scoring=scoring[metric],
-                                   random_state=42, n_jobs=sett.n_jobs).assign(run=i))
+                                   random_state=42, n_jobs=s.N_JOBS).assign(run=i))
     df_varimp_test_se = (df_varimp_test_cv.groupby("feature")["score_diff", "importance"].agg("sem")
                          .pipe(lambda x: x.set_axis([col + "_se" for col in x.columns], axis=1, inplace=False))
                          .reset_index())
@@ -277,7 +277,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                      category=df_varimp_plot["category"]))]
     if plot:
         _ = up.plot_l_calls(l_calls,
-                            pdf_path=sett.plotloc + "3__vi__" + TARGET_TYPE + ".pdf",
+                            pdf_path=s.PLOTLOC + "3__vi__" + TARGET_TYPE + ".pdf",
                             n_rows=1, n_cols=1, figsize=(8, 4))
 
 
@@ -299,7 +299,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
     # nume
     nume_top_test = up.diff(features_top_test, cate)
     from joblib import Parallel, delayed
-    Parallel(n_jobs=sett.n_jobs, max_nbytes='100M')(
+    Parallel(n_jobs=s.N_JOBS, max_nbytes='100M')(
         delayed(partial_dependence)(model, df_test[features], feature,
                                     grid_resolution=5,  # 5 quantiles
                                     kind="average")
@@ -334,9 +334,9 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                  yhat=d_pd[feature].iloc[:, i_col[TARGET_TYPE]].values, yhat_err=d_pd_err[feature].iloc
                  [:, i_col[TARGET_TYPE]].values, feature_ref=df_test[feature],
                  refline=yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR" else yhat_test.mean(),
-                 ylim=None, color=sett.colorblind[i_col[TARGET_TYPE]])))
+                 ylim=None, color=s.COLORBLIND[i_col[TARGET_TYPE]])))
     if plot:
-        up.plot_l_calls(l_calls, pdf_path=sett.plotloc + "3__pd__" + TARGET_TYPE + ".pdf")
+        up.plot_l_calls(l_calls, pdf_path=s.PLOTLOC + "3__pd__" + TARGET_TYPE + ".pdf")
 
     '''
     # --- Shap based PD --------------------------------------------------------------------------------------------------
@@ -371,7 +371,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                             #refline=yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR" else yhat_test.mean(),
                             ylim=None, color=up.colorblind[i_col[TARGET_TYPE]])))
     if plot:
-        up.plot_l_calls(l_calls, pdf_path=sett.plotloc + "3__pd_shap__" + TARGET_TYPE + ".pdf")
+        up.plot_l_calls(l_calls, pdf_path=s.PLOTLOC + "3__pd_shap__" + TARGET_TYPE + ".pdf")
     '''
 
 
@@ -463,7 +463,7 @@ for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
                              yhat_str=yhat_str,
                              multiclass_index=None if TARGET_TYPE != "MULTICLASS" else i_col[TARGET_TYPE])))
     if plot:
-        up.plot_l_calls(l_calls, pdf_path=sett.plotloc + "3__shap__" + TARGET_TYPE + ".pdf")
+        up.plot_l_calls(l_calls, pdf_path=s.PLOTLOC + "3__shap__" + TARGET_TYPE + ".pdf")
 
 
 

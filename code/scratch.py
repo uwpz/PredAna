@@ -41,12 +41,12 @@ TARGET_TYPE = "CLASS"
 n_jobs = 4
 
 # Locations
-dataloc = "../data/"
-plotloc = "../output/"
+DATALOC = "../data/"
+PLOTLOC = "../output/"
 
 # Load results from exploration
 df = nume_standard = cate_standard = cate_binned = nume_encoded = None
-with open(dataloc + "1_explore.pkl", "rb") as file:
+with open(DATALOC + "1_explore.pkl", "rb") as file:
     d_pick = pickle.load(file)
 for key, val in d_pick.items():
     exec(key + "= val")
@@ -82,7 +82,7 @@ distr_nume_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n_cols=3,
                                                              show_regplot=True)
                     .plot(features=df[nume],
                           target=df["cnt_" + TARGET_TYPE],
-                          file_path=plotloc + "distr_nume__" + TARGET_TYPE + ".pdf"))
+                          file_path=PLOTLOC + "distr_nume__" + TARGET_TYPE + ".pdf"))
 
 page = 0
 old_page = distr_nume_plots[page]
@@ -101,7 +101,7 @@ distr_cate_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n_cols=3,
                             .plot(features=df[np.append(cate, ["MISS_" + miss])],
                                   target=df["cnt_" + TARGET_TYPE],
                                   varimps=varperf_cate,
-                                  file_path=plotloc + "distr_cate__" + TARGET_TYPE + ".pdf"))
+                                  file_path=PLOTLOC + "distr_cate__" + TARGET_TYPE + ".pdf"))
 
 for page in distr_cate_plots:
     fig = page[0]
@@ -156,7 +156,7 @@ plot_grids = PlotGridBuilder(n_rows=len(features), n_cols=len(features), h=60, w
 for i in range(len(features)):
     plot_grids[0][1][i,i].set_facecolor('xkcd:light yellow')
 
-save_plot_grids_to_pdf(plot_grids, plotloc + "fancy.pdf")
+save_plot_grids_to_pdf(plot_grids, PLOTLOC + "fancy.pdf")
 '''
 
 
