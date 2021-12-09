@@ -149,8 +149,9 @@ for TARGET_TYPE in TARGET_TYPES:
 print(time.time() - start)
     
 # Winsorize (hint: plot again before deciding for log-trafo)
+#%%
 df[nume] = up.Winsorize(lower_quantile=None, upper_quantile=0.99).fit_transform(df[nume])
-
+#%%
 # Log-Transform
 tolog = ["temp"]
 if len(tolog):
@@ -174,7 +175,7 @@ print(onebin)
 # --- Final variable information ---------------------------------------------------------------------------------------
 
 for TARGET_TYPE in TARGET_TYPES:
-    #TARGET_TYPE = "REGR"
+    #TARGET_TYPE = "CLASS"
     
     # Univariate variable performances
     varperf_nume = df[nume + nume_BINNED].swifter.progress_bar(False).apply(lambda x: (
@@ -225,8 +226,7 @@ if len(nume_toplot):
         _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__distr_nume_folddep" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], target=df["fold"],
-                                           title=feature + " (VI: " + format(varperf_nume_fold[feature], "0.2f") + ")",
-                                           smooth=30))
+                                           title=feature + " (VI: " + format(varperf_nume_fold[feature], "0.2f") + ")"))
                                      for feature in nume_toplot])
 
 
