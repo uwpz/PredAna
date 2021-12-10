@@ -14,7 +14,7 @@ import copy
 import warnings
 import time
 from typing import Union, Literal
-import inspect
+from inspect import getargspec
 
 # Scikit
 from sklearn.metrics import (make_scorer, roc_auc_score, accuracy_score, roc_curve, confusion_matrix,
@@ -1015,31 +1015,13 @@ def plot_nume_REGR(ax,
 
 
 def plot_feature_target(ax,
-                        feature, target, feature_type=None, target_type=None,
+                        feature, target, 
+                        feature_type=None, target_type=None,
                         feature_name=None, target_name=None,
                         target_category=None,
-                        feature_lim=None, target_lim=None,
-                        min_width=0.2, inset_size=0.2, refline=True, n_bins=20,
-                        regplot=True, regplot_type="lowess", lowess_n_sample=1000, lowess_frac=2 / 3, spline_smooth=1, 
-                        add_colorbar=True,
-                        add_feature_distribution=True, add_target_distribution=True, add_boxplot=True, rasterized=True,
-                        title=None,
-                        add_miss_info=True,
-                        color=list(sns.color_palette("colorblind").as_hex()),
-                        colormap=LinearSegmentedColormap.from_list("bl_yl_rd", ["blue", "yellow", "red"])):
-
-    # Determine feature and target type
-    if feature_type is None:
-        feature_type = "nume" if pd.api.types.is_numeric_dtype(feature) else "cate"
-    if target_type is None:
-        target_type = (dict(binary="CLASS", continuous="REGR", multiclass="MULTICLASS")
-                       [type_of_target(target[~pd.Series(target).isna()])])
-
-    # Call plot functions
-    params = dict(ax=ax, feature=feature, target=target,
-                  feature_name=feature_name, target_name=target_name,
-                  target_category=target_category,
-                  feature_lim=feature_lim, target_lim=target_lim,
+                        **kwargs):
+    """
+    feature_lim=feature_lim, target_lim=target_lim,
                   min_width=min_width, inset_size=inset_size, refline=refline, n_bins=n_bins,
                   regplot=regplot, regplot_type=regplot_type,
                   lowess_n_sample=lowess_n_sample, lowess_frac=lowess_frac, spline_smooth=spline_smooth, 
@@ -1049,24 +1031,52 @@ def plot_feature_target(ax,
                   title=title,
                   add_miss_info=add_miss_info,
                   color=color,
-                  colormap=colormap)
+                  colormap=colormap
+                  
+                            feature_lim=None, target_lim=None,
+                        min_width=0.2, inset_size=0.2, refline=True, n_bins=20,
+                        regplot=True, regplot_type="lowess", lowess_n_sample=1000, lowess_frac=2 / 3, spline_smooth=1, 
+                        add_colorbar=True,
+                        add_feature_distribution=True, add_target_distribution=True, add_boxplot=True, rasterized=True,
+                        title=None,
+                        add_miss_info=True,
+                        color=list(sns.color_palette("colorblind").as_hex()),
+                        colormap=LinearSegmentedColormap.from_list("bl_yl_rd", ["blue", "yellow", "red"])
+    """
+    # Determine feature and target type
+    if feature_type is None:
+        feature_type = "nume" if pd.api.types.is_numeric_dtype(feature) else "cate"
+    if target_type is None:
+        target_type = (dict(binary="CLASS", continuous="REGR", multiclass="MULTICLASS")
+                       [type_of_target(target[~pd.Series(target).isna()])])
+
+    # Call plot functions
+    params_shared = dict(ax=ax, feature=feature, target=target,
+                         feature_name=feature_name, target_name=target_name,
+                         target_category=target_category)
     if feature_type == "nume":
         if target_type == "CLASS":
-            plot_nume_CLASS(**params)
+            params = {key: value for key,value in kwargs if key in getargspec(plot_nume_CLASS).args}
+            plot_nume_CLASS(**params_shared, **params)
         elif target_type == "MULTICLASS":
-            plot_nume_MULTICLASS(**params)
+            params = {key: value for key, value in kwargs if key in getargspec(plot_nume_MULTICLASS).args}
+            plot_nume_MULTICLASS(**params_shared, **params)
         elif target_type == "REGR":
-            plot_nume_REGR(**params)
+            params = {key: value for key, value in kwargs if key in getargspec(plot_nume_REGR).args}
+            plot_nume_REGR(**params_shared, **params)
         else:
             raise Exception('Wrong TARGET_TYPE')
 
     else:
         if target_type == "CLASS":
-            plot_cate_CLASS(**params)
+            params = {key: value for key,value in kwargs if key in getargspec(plot_cate_CLASS).args}
+            plot_cate_CLASS(**params_shared, **params)
         elif target_type == "MULTICLASS":
-            plot_cate_MULTICLASS(**params)
+            params = {key: value for key,value in kwargs if key in getargspec(plot_cate_MULTICLASS).args}
+            plot_cate_MULTICLASS(**params_shared, **params)
         elif target_type == "REGR":
-            plot_cate_REGR(**params)
+            params = {key: value for key, value in kwargs if key in getargspec(plot_cate_REGR).args}
+            plot_cate_REGR(**params_shared, **params)
         else:
             raise Exception('Wrong TARGET_TYPE')
 
