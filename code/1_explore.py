@@ -5,11 +5,9 @@
 # --- Packages --------------------------------------------------------------------------
 
 # General
-from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np 
 import pandas as pd
-from pandas.core.indexes.api import all_indexes_same 
-import swifter
+from swifter import swifter
 import matplotlib.pyplot as plt
 import pickle
 from importlib import reload
@@ -26,14 +24,13 @@ import utils_plots as up
 # Setting
 import settings as s
 
-
 # --- Parameter --------------------------------------------------------------------------
 
 # Plot 
 PLOT = True  # Flag helping to skip all plotting (and only process data)
 # Interactive plotting: use "%matplotlib" to deactivate and "%natplotlib inline" for inline plotting and ...
 # ... use "%matpltlib qt" for standard interactive window (then use "plt.ioff()/ion()" to deactivate/activate)
-%matplotlib 
+%matplotlib
 plt.ioff()
 
 # Specific parameters 
@@ -173,7 +170,7 @@ print(onebin)
 
 
 # --- Final variable information ---------------------------------------------------------------------------------------
-#%%
+
 for TARGET_TYPE in TARGET_TYPES:
     #TARGET_TYPE = "CLASS"
     
@@ -189,11 +186,11 @@ for TARGET_TYPE in TARGET_TYPES:
         _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__distr_nume__" + TARGET_TYPE + ".pdf", 
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], target=df["cnt_" + TARGET_TYPE], 
-                                           title=feature + " (VI: " + format(varperf_nume[feature], "0.2f") + ")",
+                                           title=f"{feature} (VI:{varperf_nume[feature]: 0.2f})",
                                            regplot_type="lowess",
                                            add_miss_info=True if feature in nume else False)) 
                                      for feature in up.interleave(nume, nume_BINNED)])
-#%%
+
 
 # --- Removing variables -----------------------------------------------------------------------------------------------
 
@@ -227,7 +224,7 @@ if len(nume_toplot):
         _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__distr_nume_folddep" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], target=df["fold"],
-                                           title=feature + " (VI: " + format(varperf_nume_fold[feature], "0.2f") + ")"))
+                                           title=f"{feature} (VI:{varperf_nume_fold[feature]: 0.2f})",))
                                      for feature in nume_toplot])
 
 
@@ -304,7 +301,7 @@ for TARGET_TYPE in TARGET_TYPES:
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature],
                                            target=df["cnt_" + TARGET_TYPE],
-                                           title=feature + " (VI: " + format(varperf_cate[feature], "0.2f") + ")",
+                                           title=f"{feature} (VI:{varperf_cate[feature]: 0.2f})",
                                            add_miss_info=False))
                                      for feature in cate + up.add("MISS_", miss)])
         
@@ -345,7 +342,7 @@ if len(cate_toplot):
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature],
                                            target=df["fold"],
-                                           title=feature + " (VI: " + format(varperf_cate_fold[feature], "0.2f") + ")"))
+                                           title=f"{feature} (VI:{varperf_cate_fold[feature]: 0.2f})"))
                                      for feature in cate_toplot])
 
 
