@@ -13,7 +13,7 @@ from joblib import Parallel, delayed
 import copy
 import warnings
 import time
-from typing import Union, Literal
+from typing import Union#, Literal
 from inspect import getargspec
 
 # Scikit
@@ -58,7 +58,7 @@ def debugtest(a=1, b=2):
     return "done"
 '''
 
-def tmp(a: pd.DataFrame, b: Literal["bub", "kahg"]) -> list:
+def tmp(a: pd.DataFrame) -> list:
     """
     Print summary of (categorical) varibles (similar to R's summary function)
     
@@ -74,6 +74,10 @@ def tmp(a: pd.DataFrame, b: Literal["bub", "kahg"]) -> list:
     dataframe which comprises summary of variables
     """
     pass
+
+
+def kwargs_reduce(kwargs, function):
+    return {key: value for key, value in kwargs.items() if key in getargspec(function).args}
 
 
 def diff(a, b) -> Union[list, np.ndarray]:  
@@ -106,6 +110,7 @@ def logit(p: float) -> float:
 def inv_logit(p):
     return np.exp(p) / (1 + np.exp(p))
 '''
+
 
 def show_figure(fig):
     """ Creates a dummy figure and uses its manager to display closed 'fig' """
@@ -141,19 +146,13 @@ def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None, c
     List of pages as tuples (figure of page, axes of figure)
     """
 
-    # Open pdf
-    
-    if pdf_path is not None:
-        pdf_pages = PdfPages(pdf_path)
-    else:
-        pdf_pages = None
-
-    l_fig = list()
+    # Build pages 
+    l_pages = list()
     for i, (plot_function, kwargs) in enumerate(l_calls):
         # Init new page
         if i % (n_rows * n_cols) == 0:
             fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize, constrained_layout=constrained_layout)
-            l_fig.append([(fig, axes)])
+            l_pages.append((fig, axes))
             i_ax = 0
 
         # Plot call
@@ -172,14 +171,14 @@ def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None, c
                 fig.set_constrained_layout_pads(w_pad=4 / 72, h_pad=4 / 72, hspace=0.1, wspace=0.1)
             else:
                 fig.tight_layout()
-            if pdf_path is not None:
-                pdf_pages.savefig(fig, bbox_inches="tight", pad_inches=0.2)
-
-    # Close pdf
-    if pdf_path is not None:
-        pdf_pages.close()
-
-    return l_fig
+                
+    # Write pdf
+    if pdf_path is not None: 
+        with PdfPages(pdf_path) as pdf:
+            for page in l_pages:
+                pdf.savefig(figure=page[0], bbox_inches="tight", pad_inches=0.2)
+                
+    return l_pages
 
 
 # --- Metrics for sklearn scorer -----------------------------------------------------------------------------
@@ -188,7 +187,7 @@ def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None, c
 
 def reduce2prob(y_pred):
     """ Reduce prediction matrix to 1-dim-array comprising probability of "1"-class """
-    if (y_pred.ndim == 2) & (y_pred.shape[1] == 2):
+    if (y_pred.ndim == 2) and (y_pred.shape[1] == 2):
         return y_pred[:, 1]
     else: 
         return y_pred
@@ -304,7 +303,7 @@ def bin(feature, n_bins: int=5, precision=3):
 
 
 # Univariate model performance
-def variable_performance(feature, target, scorer, target_type=None, splitter=KFold(5), groups=None):
+def variable_performance(feature, target, scorer, target_type=None, splitter=KFold(5), groups=None, verbose=True):
     """
     Calculates univariate variable performance by applying LinearRegression or LogisticRegression (depending on target)
     on single feature model and calcuating scoring metric.\n 
@@ -340,9 +339,10 @@ def variable_performance(feature, target, scorer, target_type=None, splitter=KFo
         target_type = dict(continuous="REGR", binary="CLASS",
                            multiclass="MULTICLASS")[type_of_target(df_hlp["target"])]
     numeric_feature = pd.api.types.is_numeric_dtype(df_hlp["feature"])
-    print("Calculate univariate performance for", 
-          "numeric" if numeric_feature else "categorical",
-          "feature '" + feature.name + "' for " + target_type + " target '" + target.name + "'")
+    if verbose:
+        print("Calculate univariate performance for", 
+              "numeric" if numeric_feature else "categorical",
+              "feature '" + feature.name + "' for " + target_type + " target '" + target.name + "'")
 
     # Calc performance
     perf = np.mean(cross_val_score(
@@ -456,7 +456,7 @@ def helper_calc_barboxwidth(feature, target, min_width=0.2):
     return df_barboxwidth
 
 
-def helper_adapt_feature_target(feature, target, feature_name, target_name):
+def helper_adapt_feature_target(feature, target, feature_name, target_name, verbose=True):
     # Convert to Series and adapt labels
     if not isinstance(feature, pd.Series):
         feature = pd.Series(feature)
@@ -471,7 +471,8 @@ def helper_adapt_feature_target(feature, target, feature_name, target_name):
         target = target.copy()
         target.name = target_name
 
-    print("Plotting " + feature.name + " vs. " + target.name)
+    if verbose:
+        print("Plotting " + feature.name + " vs. " + target.name)
 
     # Remove missings
     mask_target_miss = target.isna()
@@ -568,10 +569,11 @@ def plot_cate_CLASS(ax,
                     title=None,
                     add_miss_info=True,
                     color=list(sns.color_palette("colorblind").as_hex()),
-                    **_):
+                    verbose=True):
 
     # Adapt feature and target
-    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name)
+    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name, 
+                                                                    verbose=verbose)
 
     # Adapt color
     if isinstance(color, list):
@@ -620,10 +622,11 @@ def plot_cate_MULTICLASS(ax,
                          color=list(sns.color_palette("colorblind").as_hex()),
                          reverse=False,
                          exchange_x_y_axis=False,
-                         **_):
+                         verbose=True):
 
     # Adapt feature and target
-    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name)
+    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name, 
+                                                                    verbose=verbose)
 
     # Add title
     if title is None:
@@ -671,10 +674,11 @@ def plot_cate_REGR(ax,
                    title=None,
                    add_miss_info=True,
                    color=list(sns.color_palette("colorblind").as_hex()),
-                   **_):
+                   verbose=True):
 
     # Adapt feature and target
-    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name)
+    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name,
+                                                                    verbose=verbose)
 
     # Adapt color
     if isinstance(color, list):
@@ -728,10 +732,11 @@ def plot_nume_CLASS(ax,
                     add_miss_info=True,
                     rasterized=True,
                     color=list(sns.color_palette("colorblind").as_hex()),
-                    **_):
+                    verbose=True):
 
     # Adapt feature and target
-    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name)
+    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name,
+                                                                    verbose=verbose)
 
     # Add title
     if title is None:
@@ -778,14 +783,15 @@ def plot_nume_MULTICLASS(ax,
                          add_miss_info=True,
                          rasterized=True,
                          color=list(sns.color_palette("colorblind").as_hex()),
-                         **_):
+                         verbose=True):
 
     plot_nume_CLASS(ax=ax, feature=feature, target=target,
                     feature_name=feature_name, target_name=target_name,
                     feature_lim=feature_lim,
                     inset_size=inset_size, n_bins=n_bins,
                     title=title, add_miss_info=add_miss_info, rasterized=rasterized,
-                    color=color, **_)
+                    color=color,
+                    verbose=verbose)
 
 
 # Scatterplot as heatmap
@@ -802,10 +808,11 @@ def plot_nume_REGR(ax,
                    add_feature_distribution=True, add_target_distribution=True, n_bins=20, 
                    add_boxplot=True, rasterized=True,
                    colormap=LinearSegmentedColormap.from_list("bl_yl_rd", ["blue", "yellow", "red"]),
-                   **_):
+                   verbose=True):
 
     # Adapt feature and target
-    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name)
+    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name,
+                                                                    verbose=verbose)
 
     # Add title
     if title is None:
@@ -1012,8 +1019,8 @@ def plot_nume_REGR(ax,
         inset_ax_over.get_yaxis().set_visible(False)
         for pos in ["bottom", "left"]:
             inset_ax_over.spines[pos].set_edgecolor(None)
-
-
+            
+            
 def plot_feature_target(ax,
                         feature, target, 
                         feature_type=None, target_type=None,
@@ -1052,31 +1059,25 @@ def plot_feature_target(ax,
 
     # Call plot functions
     params_shared = dict(ax=ax, feature=feature, target=target,
-                         feature_name=feature_name, target_name=target_name,
-                         target_category=target_category)
+                         feature_name=feature_name, target_name=target_name)
+
     if feature_type == "nume":
         if target_type == "CLASS":
-            params = {key: value for key,value in kwargs if key in getargspec(plot_nume_CLASS).args}
-            plot_nume_CLASS(**params_shared, **params)
+            plot_nume_CLASS(**params_shared, **kwargs_reduce(kwargs, plot_nume_CLASS))
         elif target_type == "MULTICLASS":
-            params = {key: value for key, value in kwargs if key in getargspec(plot_nume_MULTICLASS).args}
-            plot_nume_MULTICLASS(**params_shared, **params)
+            plot_nume_MULTICLASS(**params_shared, **kwargs_reduce(kwargs, plot_nume_MULTICLASS))
         elif target_type == "REGR":
-            params = {key: value for key, value in kwargs if key in getargspec(plot_nume_REGR).args}
-            plot_nume_REGR(**params_shared, **params)
+            plot_nume_REGR(**params_shared, **kwargs_reduce(kwargs, plot_nume_REGR))
         else:
             raise Exception('Wrong TARGET_TYPE')
 
     else:
         if target_type == "CLASS":
-            params = {key: value for key,value in kwargs if key in getargspec(plot_cate_CLASS).args}
-            plot_cate_CLASS(**params_shared, **params)
+            plot_cate_CLASS(**params_shared, **kwargs_reduce(kwargs, plot_nume_CLASS))
         elif target_type == "MULTICLASS":
-            params = {key: value for key,value in kwargs if key in getargspec(plot_cate_MULTICLASS).args}
-            plot_cate_MULTICLASS(**params_shared, **params)
+            plot_cate_MULTICLASS(**params_shared, **kwargs_reduce(kwargs, plot_cate_MULTICLASS))
         elif target_type == "REGR":
-            params = {key: value for key, value in kwargs if key in getargspec(plot_cate_REGR).args}
-            plot_cate_REGR(**params_shared, **params)
+            plot_cate_REGR(**params_shared, **kwargs_reduce(kwargs, plot_cate_REGR))
         else:
             raise Exception('Wrong TARGET_TYPE')
 
