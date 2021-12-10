@@ -1,7 +1,7 @@
 /.vscode
 *.lnk
 *.bat
-#*.pkl
+*.pkl
 code/__pycache__
 .ipynb_checkpoints/
 output
