@@ -213,3 +213,40 @@ up.plot_feature_target(ax, df[f_cate].values, df["cnt_REGR"].values,
                        min_width=0.5, inset_size=0.2, n_bins=50,
                        title="title",
                        add_miss_info=True)
+
+
+# Preprocessing Pipeline
+pipe_nume = Pipeline(steps=[
+    ('impute', SimpleImputer(strategy="median")),
+    ('winsorize', pc.Winsorize(lower_quantile=0.01, upper_quantile=0.99)),
+    ('scale', StandardScaler())])
+pipe_cate = Pipeline(steps=[
+    ('impute', pc.ImputeMode()),
+    ('onehot', OneHotEncoder(sparse=False, handle_unknown="ignore"))])
+
+pipe_features = ColumnTransformer(
+    transformers=[
+        ('num', pipe_nume, nume),
+        ('cat', pipe_cate, cate)])
+
+preprocessing_pipeline = Pipeline([
+    ('feature_engineering', pc.FeatureEngineering()),
+    ('column_selector', pc.ColumnSelector(columns=np.append(cate, nume))),
+    ('feature_transform', pipe_features)])
+
+# Classifier
+clf = ElasticNet(alpha=parameters_elasticnet['alpha'], l1_ratio=parameters_elasticnet['l1_ratio'])
+
+
+class ColumnSelector(BaseEstimator, TransformerMixin):
+    def __init__(self, columns=None):
+        self._columns = columns
+
+    def fit(self, *_):
+        return self
+
+    def transform(self, df, *_):
+        return df[self._columns]
+
+    def get_params(self, deep=True):
+        return {"columns": self._columns}
