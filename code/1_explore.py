@@ -5,11 +5,9 @@
 # --- Packages --------------------------------------------------------------------------
 
 # General
-from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np 
 import pandas as pd
-from pandas.core.indexes.api import all_indexes_same 
-import swifter
+from swifter import swifter
 import matplotlib.pyplot as plt
 import pickle
 from importlib import reload
@@ -26,7 +24,6 @@ import utils_plots as up
 # Setting
 import settings as s
 
-
 # --- Parameter --------------------------------------------------------------------------
 
 # Plot 
@@ -34,6 +31,7 @@ PLOT = True  # Flag helping to skip all plotting (and only process data)
 # Interactive plotting: use "%matplotlib" to deactivate and "%natplotlib inline" for inline plotting and ...
 # ... use "%matpltlib qt" for standard interactive window (then use "plt.ioff()/ion()" to deactivate/activate)
 %matplotlib
+plt.ioff()
 
 # Specific parameters 
 TARGET_TYPES = ["REGR", "CLASS", "MULTICLASS"]
@@ -149,9 +147,8 @@ for TARGET_TYPE in TARGET_TYPES:
 print(time.time() - start)
     
 # Winsorize (hint: plot again before deciding for log-trafo)
-#%%
 df[nume] = up.Winsorize(lower_quantile=None, upper_quantile=0.99).fit_transform(df[nume])
-#%%
+
 # Log-Transform
 tolog = ["temp"]
 if len(tolog):
@@ -186,11 +183,12 @@ for TARGET_TYPE in TARGET_TYPES:
     
     # Plot
     if PLOT:
-        _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__distr_nume__" + TARGET_TYPE + "3.pdf", 
+        _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__distr_nume__" + TARGET_TYPE + ".pdf", 
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], target=df["cnt_" + TARGET_TYPE], 
-                                           title=feature + " (VI: " + format(varperf_nume[feature], "0.2f") + ")",
-                                           regplot_type="lowess")) 
+                                           title=f"{feature} (VI:{varperf_nume[feature]: 0.2f})",
+                                           regplot_type="lowess",
+                                           add_miss_info=True if feature in nume else False)) 
                                      for feature in up.interleave(nume, nume_BINNED)])
 
 
@@ -226,7 +224,7 @@ if len(nume_toplot):
         _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__distr_nume_folddep" + TARGET_TYPE + ".pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], target=df["fold"],
-                                           title=feature + " (VI: " + format(varperf_nume_fold[feature], "0.2f") + ")"))
+                                           title=f"{feature} (VI:{varperf_nume_fold[feature]: 0.2f})",))
                                      for feature in nume_toplot])
 
 
@@ -291,7 +289,7 @@ for TARGET_TYPE in TARGET_TYPES:
     #TARGET_TYPE = "CLASS"
 
     # Univariate variable importance
-    varperf_cate = df[cate + up.add("MISS_", miss)].swifter.apply(lambda x: (
+    varperf_cate = df[cate + up.add("MISS_", miss)].swifter.progress_bar(False).apply(lambda x: (
         up.variable_performance(x, df["cnt_" + TARGET_TYPE],
                                 splitter=ShuffleSplit(n_splits=1, test_size=0.2, random_state=42),
                                 scorer=up.d_scoring[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" else "auc"])))
@@ -303,7 +301,7 @@ for TARGET_TYPE in TARGET_TYPES:
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature],
                                            target=df["cnt_" + TARGET_TYPE],
-                                           title=feature + " (VI: " + format(varperf_cate[feature], "0.2f") + ")",
+                                           title=f"{feature} (VI:{varperf_cate[feature]: 0.2f})",
                                            add_miss_info=False))
                                      for feature in cate + up.add("MISS_", miss)])
         
@@ -344,7 +342,7 @@ if len(cate_toplot):
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature],
                                            target=df["fold"],
-                                           title=feature + " (VI: " + format(varperf_cate_fold[feature], "0.2f") + ")"))
+                                           title=f"{feature} (VI:{varperf_cate_fold[feature]: 0.2f})"))
                                      for feature in cate_toplot])
 
 

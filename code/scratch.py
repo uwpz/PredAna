@@ -5,6 +5,7 @@
 # --- Packages ------------------------------------------------------------------------------------
 
 # General
+from inspect import signature, getargspec
 from scipy.interpolate import splev, splrep, make_interp_spline
 import seaborn as sns
 import matplotlib.colors as mcolors
@@ -30,7 +31,14 @@ pd.api.types.is_object_dtype(b)
 pd.api.types.is_string_dtype(b)
 
 
+def blub(a, c=1):
+    return 2
 
+
+getargspec(blub).args
+signature(up.debugtest)
+
+up.debugtest(blub=1)
 
 # --- Parameter --------------------------------------------------------------------------
 
@@ -41,12 +49,12 @@ TARGET_TYPE = "CLASS"
 n_jobs = 4
 
 # Locations
-DATALOC = "../data/"
-PLOTLOC = "../output/"
+dataloc = "../data/"
+plotloc = "../output/"
 
 # Load results from exploration
 df = nume_standard = cate_standard = cate_binned = nume_encoded = None
-with open(DATALOC + "1_explore.pkl", "rb") as file:
+with open(dataloc + "1_explore.pkl", "rb") as file:
     d_pick = pickle.load(file)
 for key, val in d_pick.items():
     exec(key + "= val")
@@ -82,7 +90,7 @@ distr_nume_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n_cols=3,
                                                              show_regplot=True)
                     .plot(features=df[nume],
                           target=df["cnt_" + TARGET_TYPE],
-                          file_path=PLOTLOC + "distr_nume__" + TARGET_TYPE + ".pdf"))
+                          file_path=plotloc + "distr_nume__" + TARGET_TYPE + ".pdf"))
 
 page = 0
 old_page = distr_nume_plots[page]
@@ -101,7 +109,7 @@ distr_cate_plots = (hms_plot.MultiFeatureDistributionPlotter(n_rows=2, n_cols=3,
                             .plot(features=df[np.append(cate, ["MISS_" + miss])],
                                   target=df["cnt_" + TARGET_TYPE],
                                   varimps=varperf_cate,
-                                  file_path=PLOTLOC + "distr_cate__" + TARGET_TYPE + ".pdf"))
+                                  file_path=plotloc + "distr_cate__" + TARGET_TYPE + ".pdf"))
 
 for page in distr_cate_plots:
     fig = page[0]
@@ -156,7 +164,7 @@ plot_grids = PlotGridBuilder(n_rows=len(features), n_cols=len(features), h=60, w
 for i in range(len(features)):
     plot_grids[0][1][i,i].set_facecolor('xkcd:light yellow')
 
-save_plot_grids_to_pdf(plot_grids, PLOTLOC + "fancy.pdf")
+save_plot_grids_to_pdf(plot_grids, plotloc + "fancy.pdf")
 '''
 
 

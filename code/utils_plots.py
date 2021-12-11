@@ -13,8 +13,8 @@ from joblib import Parallel, delayed
 import copy
 import warnings
 import time
-from typing import Union, Literal
-import inspect
+from typing import Union#, Literal
+from inspect import getargspec
 
 # Scikit
 from sklearn.metrics import (make_scorer, roc_auc_score, accuracy_score, roc_curve, confusion_matrix,
@@ -58,7 +58,7 @@ def debugtest(a=1, b=2):
     return "done"
 '''
 
-def tmp(a: pd.DataFrame, b: Literal["bub", "kahg"]) -> list:
+def tmp(a: pd.DataFrame) -> list:
     """
     Print summary of (categorical) varibles (similar to R's summary function)
     
@@ -74,6 +74,11 @@ def tmp(a: pd.DataFrame, b: Literal["bub", "kahg"]) -> list:
     dataframe which comprises summary of variables
     """
     pass
+
+
+def kwargs_reduce(kwargs: dict, function) -> dict:
+    """ Reduce kwargs dict to the arguments of function """
+    return {key: value for key, value in kwargs.items() if key in getargspec(function).args}
 
 
 def diff(a, b) -> Union[list, np.ndarray]:  
@@ -106,6 +111,7 @@ def logit(p: float) -> float:
 def inv_logit(p):
     return np.exp(p) / (1 + np.exp(p))
 '''
+
 
 def show_figure(fig):
     """ Creates a dummy figure and uses its manager to display closed 'fig' """
@@ -141,19 +147,13 @@ def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None, c
     List of pages as tuples (figure of page, axes of figure)
     """
 
-    # Open pdf
-    
-    if pdf_path is not None:
-        pdf_pages = PdfPages(pdf_path)
-    else:
-        pdf_pages = None
-
-    l_fig = list()
+    # Build pages 
+    l_pages = list()
     for i, (plot_function, kwargs) in enumerate(l_calls):
         # Init new page
         if i % (n_rows * n_cols) == 0:
             fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize, constrained_layout=constrained_layout)
-            l_fig.append([(fig, axes)])
+            l_pages.append((fig, axes))
             i_ax = 0
 
         # Plot call
@@ -172,80 +172,81 @@ def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None, c
                 fig.set_constrained_layout_pads(w_pad=4 / 72, h_pad=4 / 72, hspace=0.1, wspace=0.1)
             else:
                 fig.tight_layout()
-            if pdf_path is not None:
-                pdf_pages.savefig(fig, bbox_inches="tight", pad_inches=0.2)
-
-    # Close pdf
-    if pdf_path is not None:
-        pdf_pages.close()
-
-    return l_fig
+                
+    # Write pdf
+    if pdf_path is not None: 
+        with PdfPages(pdf_path) as pdf:
+            for page in l_pages:
+                pdf.savefig(figure=page[0], bbox_inches="tight", pad_inches=0.2)
+                
+    return l_pages
 
 
 # --- Metrics for sklearn scorer -----------------------------------------------------------------------------
 
 # Regr
 
-def reduce2prob(y_pred):
+def reduce2prob(yhat):
     """ Reduce prediction matrix to 1-dim-array comprising probability of "1"-class """
-    if (y_pred.ndim == 2) & (y_pred.shape[1] == 2):
-        return y_pred[:, 1]
+    if (yhat.ndim == 2) and (yhat.shape[1] == 2):
+        return yhat[:, 1]
     else: 
-        return y_pred
+        return yhat
 
-def spear(y_true, y_pred) -> float:
+
+def spear(y, yhat) -> float:
     """ Spearman correlation (working also for classification tasks) """
-    y_pred = reduce2prob(y_pred)  # Catch classification case
-    spear = pd.DataFrame({"y_true": y_true, "y_pred": y_pred}).corr(method="spearman").values[0, 1]
+    yhat = reduce2prob(yhat)  # Catch classification case
+    spear = pd.DataFrame({"y": y, "yhat": yhat}).corr(method="spearman").values[0, 1]
     return spear
 
 
-def pear(y_true, y_pred) -> float:
+def pear(y, yhat) -> float:
     """ Pearson correlation (working also for classification tasks) """
-    y_pred = reduce2prob(y_pred)  # Catch classification case
-    pear = pd.DataFrame({"y_true": y_true, "y_pred": y_pred}).corr(method="pearson").values[0, 1]
+    yhat = reduce2prob(yhat)  # Catch classification case
+    pear = pd.DataFrame({"y": y, "yhat": yhat}).corr(method="pearson").values[0, 1]
     return pear
 
 
-def rmse(y_true, y_pred) -> float:
+def rmse(y, yhat) -> float:
     """ Root mean squared error """
-    return np.sqrt(np.mean(np.power(y_true - y_pred, 2)))
+    return np.sqrt(np.mean(np.power(y - yhat, 2)))
 
 
-def ame(y_true, y_pred) -> float:
+def ame(y, yhat) -> float:
     """ Absolute mean error"""
-    return np.abs(np.mean(y_true - y_pred))
+    return np.abs(np.mean(y - yhat))
 
 
-def mae(y_true, y_pred) -> float:
+def mae(y, yhat) -> float:
     """ Mean absolute error """
-    return np.mean(np.abs(y_true - y_pred))
+    return np.mean(np.abs(y - yhat))
 
 
 # Class + Multiclass
 
-def auc(y_true, y_pred) -> float:
+def auc(y, yhat) -> float:
     """ AUC (working also for regression task which is basically the concordance) """
     
-    # Usually y_pred is a matrix, so reduce it to 1-dim array
-    y_pred = reduce2prob(y_pred)
+    # Usually yhat is a matrix, so reduce it to 1-dim array
+    yhat = reduce2prob(yhat)
 
     # Regression case
-    if (y_true.ndim == 1) & (type_of_target(y_true) == "continuous"):
-        y_pred = MinMaxScaler().fit_transform(y_pred.reshape(-1, 1))[:, 0]
-        y_true = MinMaxScaler().fit_transform(y_true)   
+    if (y.ndim == 1) & (type_of_target(y) == "continuous"):
+        yhat = MinMaxScaler().fit_transform(yhat.reshape(-1, 1))[:, 0]
+        y = MinMaxScaler().fit_transform(y)   
 
-    auc = roc_auc_score(y_true, y_pred, multi_class="ovr")
+    auc = roc_auc_score(y, yhat, multi_class="ovr")
     return auc
 
 
-def acc(y_true, y_pred):
+def acc(y, yhat):
     """ Accuracy """
-    if y_pred.ndim > 1:
-        y_pred = y_pred.argmax(axis=1)
-    if y_true.ndim > 1:
-        y_true = y_true.values.argmax(axis=1)
-    return accuracy_score(y_true, y_pred)
+    if yhat.ndim > 1:
+        yhat = yhat.argmax(axis=1)
+    if y.ndim > 1:
+        y = y.values.argmax(axis=1)
+    return accuracy_score(y, yhat)
 
 
 # Scoring metrics
@@ -304,7 +305,7 @@ def bin(feature, n_bins: int=5, precision=3):
 
 
 # Univariate model performance
-def variable_performance(feature, target, scorer, target_type=None, splitter=KFold(5), groups=None):
+def variable_performance(feature, target, scorer, target_type=None, splitter=KFold(5), groups=None, verbose=True):
     """
     Calculates univariate variable performance by applying LinearRegression or LogisticRegression (depending on target)
     on single feature model and calcuating scoring metric.\n 
@@ -340,9 +341,10 @@ def variable_performance(feature, target, scorer, target_type=None, splitter=KFo
         target_type = dict(continuous="REGR", binary="CLASS",
                            multiclass="MULTICLASS")[type_of_target(df_hlp["target"])]
     numeric_feature = pd.api.types.is_numeric_dtype(df_hlp["feature"])
-    print("Calculate univariate performance for", 
-          "numeric" if numeric_feature else "categorical",
-          "feature '" + feature.name + "' for " + target_type + " target '" + target.name + "'")
+    if verbose:
+        print("Calculate univariate performance for", 
+              "numeric" if numeric_feature else "categorical",
+              "feature '" + feature.name + "' for " + target_type + " target '" + target.name + "'")
 
     # Calc performance
     perf = np.mean(cross_val_score(
@@ -451,12 +453,12 @@ def helper_calc_barboxwidth(feature, target, min_width=0.2):
                       .assign(pct=lambda z: 100 * z["w"] / df_hlp.values.sum())
                       .assign(w=lambda z: 0.9 * z["w"] / z["w"].max())
                       .assign(**{feature.name + "_fmt":
-                                 lambda z: z[feature.name] + z["pct"].map(" ({:,.1f} %)".format)})
+                                 lambda z: z[feature.name] + z["pct"].map(lambda x: f" ({x:0.1f}%)")})
                       .assign(w=lambda z: np.where(z["w"] < min_width, min_width, z["w"])))
     return df_barboxwidth
 
 
-def helper_adapt_feature_target(feature, target, feature_name, target_name):
+def helper_adapt_feature_target(feature, target, feature_name, target_name, verbose=True):
     # Convert to Series and adapt labels
     if not isinstance(feature, pd.Series):
         feature = pd.Series(feature)
@@ -471,7 +473,8 @@ def helper_adapt_feature_target(feature, target, feature_name, target_name):
         target = target.copy()
         target.name = target_name
 
-    print("Plotting " + feature.name + " vs. " + target.name)
+    if verbose:
+        print("Plotting " + feature.name + " vs. " + target.name)
 
     # Remove missings
     mask_target_miss = target.isna()
@@ -568,10 +571,11 @@ def plot_cate_CLASS(ax,
                     title=None,
                     add_miss_info=True,
                     color=list(sns.color_palette("colorblind").as_hex()),
-                    **_):
+                    verbose=True):
 
     # Adapt feature and target
-    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name)
+    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name, 
+                                                                    verbose=verbose)
 
     # Adapt color
     if isinstance(color, list):
@@ -606,7 +610,7 @@ def plot_cate_CLASS(ax,
     # Missing information
     if add_miss_info:
         ax.set_ylabel(feature.name)
-        ax.set_ylabel(ax.get_ylabel() + " (" + format(pct_miss_feature, "0.1f") + "% NA)")
+        ax.set_ylabel(ax.get_ylabel() + f" ({pct_miss_feature:0.1f} % NA)")
 
 
 def plot_cate_MULTICLASS(ax,
@@ -620,10 +624,11 @@ def plot_cate_MULTICLASS(ax,
                          color=list(sns.color_palette("colorblind").as_hex()),
                          reverse=False,
                          exchange_x_y_axis=False,
-                         **_):
+                         verbose=True):
 
     # Adapt feature and target
-    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name)
+    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name, 
+                                                                    verbose=verbose)
 
     # Add title
     if title is None:
@@ -660,7 +665,7 @@ def plot_cate_MULTICLASS(ax,
     # Missing information
     if add_miss_info:
         ax.set_ylabel(feature.name)
-        ax.set_ylabel(ax.get_ylabel() + " (" + format(pct_miss_feature, "0.1f") + "% NA)")
+        ax.set_ylabel(ax.get_ylabel() + f" ({pct_miss_feature:0.1f}% NA)")
 
 
 def plot_cate_REGR(ax,
@@ -671,10 +676,11 @@ def plot_cate_REGR(ax,
                    title=None,
                    add_miss_info=True,
                    color=list(sns.color_palette("colorblind").as_hex()),
-                   **_):
+                   verbose=True):
 
     # Adapt feature and target
-    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name)
+    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name,
+                                                                    verbose=verbose)
 
     # Adapt color
     if isinstance(color, list):
@@ -716,7 +722,7 @@ def plot_cate_REGR(ax,
     # Missing information
     if add_miss_info:
         ax.set_ylabel(feature.name)
-        ax.set_ylabel(ax.get_ylabel() + " (" + format(pct_miss_feature, "0.1f") + "% NA)")
+        ax.set_ylabel(ax.get_ylabel() + f" ({pct_miss_feature:0.1f}% NA)")
 
 
 def plot_nume_CLASS(ax,
@@ -726,12 +732,13 @@ def plot_nume_CLASS(ax,
                     inset_size=0.2, n_bins=20,
                     title=None,
                     add_miss_info=True,
-                    rasterized=True,
+                    rasterized_boxplot=False,
                     color=list(sns.color_palette("colorblind").as_hex()),
-                    **_):
+                    verbose=True):
 
     # Adapt feature and target
-    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name)
+    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name,
+                                                                    verbose=verbose)
 
     # Add title
     if title is None:
@@ -758,11 +765,12 @@ def plot_nume_CLASS(ax,
     sns.boxplot(ax=inset_ax, x=feature, y=target, order=np.sort(target.unique()), orient="h", palette=color,
                 showmeans=True, meanprops={"marker": "x", "markerfacecolor": "black", "markeredgecolor": "black"})
     _ = ax.set_yticks(yticks[(yticks >= ylim[0]) & (yticks <= ylim[1])])
-    ax.set_rasterized(rasterized)
+    ax.set_rasterized(rasterized_boxplot)
 
     # Add missing information
     if add_miss_info:
-        ax.set_xlabel(ax.get_xlabel() + " (" + format(pct_miss_feature, "0.1f") + "% NA)")
+        ax.set_xlabel(ax.get_xlabel() + f" ({pct_miss_feature:0.1f}% NA)")
+
 
     # Set feature_lim (must be after inner plot)
     if feature_lim is not None:
@@ -776,16 +784,17 @@ def plot_nume_MULTICLASS(ax,
                          inset_size=0.2, n_bins=20,
                          title=None,
                          add_miss_info=True,
-                         rasterized=True,
+                         rasterized_boxplot=False,
                          color=list(sns.color_palette("colorblind").as_hex()),
-                         **_):
+                         verbose=True):
 
     plot_nume_CLASS(ax=ax, feature=feature, target=target,
                     feature_name=feature_name, target_name=target_name,
                     feature_lim=feature_lim,
                     inset_size=inset_size, n_bins=n_bins,
-                    title=title, add_miss_info=add_miss_info, rasterized=rasterized,
-                    color=color, **_)
+                    title=title, add_miss_info=add_miss_info, rasterized_boxplot=rasterized_boxplot,
+                    color=color,
+                    verbose=verbose)
 
 
 # Scatterplot as heatmap
@@ -800,12 +809,13 @@ def plot_nume_REGR(ax,
                    add_colorbar=True,
                    inset_size=0.2,
                    add_feature_distribution=True, add_target_distribution=True, n_bins=20, 
-                   add_boxplot=True, rasterized=True,
+                   add_boxplot=True, rasterized_boxplot=False,
                    colormap=LinearSegmentedColormap.from_list("bl_yl_rd", ["blue", "yellow", "red"]),
-                   **_):
+                   verbose=True):
 
     # Adapt feature and target
-    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name)
+    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name,
+                                                                    verbose=verbose)
 
     # Add title
     if title is None:
@@ -872,7 +882,8 @@ def plot_nume_REGR(ax,
             ax.plot(df_lowess["x"], df_lowess["yhat"], color="black")
                         
     if add_miss_info:
-        ax.set_xlabel(ax.get_xlabel() + " (" + format(pct_miss_feature, "0.1f") + "% NA)")
+        ax.set_xlabel(ax.get_ylabel() + f" ({pct_miss_feature:0.1f}% NA)")
+
     if title is not None:
         ax.set_title(title)
     if target_lim is not None:
@@ -937,7 +948,7 @@ def plot_nume_REGR(ax,
                                                    "markerfacecolor": "white", "markeredgecolor": "white"},
                         ax=inset_inset_ax_y)
             inset_inset_ax_y.set_ylim(ylim)
-            inset_inset_ax_y.set_rasterized(rasterized)
+            inset_inset_ax_y.set_rasterized(rasterized_boxplot)
 
             # More space for plot
             left, right = inset_inset_ax_y.get_xlim()
@@ -997,7 +1008,7 @@ def plot_nume_REGR(ax,
                                                    "markeredgecolor": "white"},
                         ax=inset_inset_ax_x)
             inset_inset_ax_x.set_xlim(xlim)
-            inset_inset_ax_y.set_rasterized(rasterized)
+            inset_inset_ax_y.set_rasterized(rasterized_boxplot)
 
             # More space for plot
             left, right = inset_inset_ax_x.get_ylim()
@@ -1012,22 +1023,37 @@ def plot_nume_REGR(ax,
         inset_ax_over.get_yaxis().set_visible(False)
         for pos in ["bottom", "left"]:
             inset_ax_over.spines[pos].set_edgecolor(None)
-
-
+            
+            
 def plot_feature_target(ax,
-                        feature, target, feature_type=None, target_type=None,
+                        feature, target, 
+                        feature_type=None, target_type=None,
                         feature_name=None, target_name=None,
                         target_category=None,
-                        feature_lim=None, target_lim=None,
-                        min_width=0.2, inset_size=0.2, refline=True, n_bins=20,
-                        regplot=True, regplot_type="lowess", lowess_n_sample=1000, lowess_frac=2 / 3, spline_smooth=1, 
-                        add_colorbar=True,
-                        add_feature_distribution=True, add_target_distribution=True, add_boxplot=True, rasterized=True,
-                        title=None,
-                        add_miss_info=True,
-                        color=list(sns.color_palette("colorblind").as_hex()),
-                        colormap=LinearSegmentedColormap.from_list("bl_yl_rd", ["blue", "yellow", "red"])):
-
+                        **kwargs):
+    """
+    feature_lim=feature_lim, target_lim=target_lim,
+                  min_width=min_width, inset_size=inset_size, refline=refline, n_bins=n_bins,
+                  regplot=regplot, regplot_type=regplot_type,
+                  lowess_n_sample=lowess_n_sample, lowess_frac=lowess_frac, spline_smooth=spline_smooth, 
+                  add_colorbar=add_colorbar,
+                  add_feature_distribution=add_feature_distribution, add_target_distribution=add_target_distribution,
+                  add_boxplot=add_boxplot, rasterized_boxplot=rasterized_boxplot,
+                  title=title,
+                  add_miss_info=add_miss_info,
+                  color=color,
+                  colormap=colormap
+                  
+                    feature_lim=None, target_lim=None,
+                min_width=0.2, inset_size=0.2, refline=True, n_bins=20,
+                regplot=True, regplot_type="lowess", lowess_n_sample=1000, lowess_frac=2 / 3, spline_smooth=1, 
+                add_colorbar=True,
+                add_feature_distribution=True, add_target_distribution=True, add_boxplot=True, rasterized_boxplot=True,
+                title=None,
+                add_miss_info=True,
+                color=list(sns.color_palette("colorblind").as_hex()),
+                colormap=LinearSegmentedColormap.from_list("bl_yl_rd", ["blue", "yellow", "red"])
+    """
     # Determine feature and target type
     if feature_type is None:
         feature_type = "nume" if pd.api.types.is_numeric_dtype(feature) else "cate"
@@ -1036,37 +1062,26 @@ def plot_feature_target(ax,
                        [type_of_target(target[~pd.Series(target).isna()])])
 
     # Call plot functions
-    params = dict(ax=ax, feature=feature, target=target,
-                  feature_name=feature_name, target_name=target_name,
-                  target_category=target_category,
-                  feature_lim=feature_lim, target_lim=target_lim,
-                  min_width=min_width, inset_size=inset_size, refline=refline, n_bins=n_bins,
-                  regplot=regplot, regplot_type=regplot_type,
-                  lowess_n_sample=lowess_n_sample, lowess_frac=lowess_frac, spline_smooth=spline_smooth, 
-                  add_colorbar=add_colorbar,
-                  add_feature_distribution=add_feature_distribution, add_target_distribution=add_target_distribution,
-                  add_boxplot=add_boxplot, rasterized=rasterized,
-                  title=title,
-                  add_miss_info=add_miss_info,
-                  color=color,
-                  colormap=colormap)
+    params_shared = dict(ax=ax, feature=feature, target=target,
+                         feature_name=feature_name, target_name=target_name)
+
     if feature_type == "nume":
         if target_type == "CLASS":
-            plot_nume_CLASS(**params)
+            plot_nume_CLASS(**params_shared, **kwargs_reduce(kwargs, plot_nume_CLASS))
         elif target_type == "MULTICLASS":
-            plot_nume_MULTICLASS(**params)
+            plot_nume_MULTICLASS(**params_shared, **kwargs_reduce(kwargs, plot_nume_MULTICLASS))
         elif target_type == "REGR":
-            plot_nume_REGR(**params)
+            plot_nume_REGR(**params_shared, **kwargs_reduce(kwargs, plot_nume_REGR))
         else:
             raise Exception('Wrong TARGET_TYPE')
 
     else:
         if target_type == "CLASS":
-            plot_cate_CLASS(**params)
+            plot_cate_CLASS(**params_shared, **kwargs_reduce(kwargs, plot_nume_CLASS))
         elif target_type == "MULTICLASS":
-            plot_cate_MULTICLASS(**params)
+            plot_cate_MULTICLASS(**params_shared, **kwargs_reduce(kwargs, plot_cate_MULTICLASS))
         elif target_type == "REGR":
-            plot_cate_REGR(**params)
+            plot_cate_REGR(**params_shared, **kwargs_reduce(kwargs, plot_cate_REGR))
         else:
             raise Exception('Wrong TARGET_TYPE')
 
@@ -1644,7 +1659,7 @@ def varimp2df(varimp, features):
 
 # Dataframe based permutation importance which can select a subset of features for which to calculate VI
 def variable_importance(estimator, df, y, features, target_type=None, scoring=None,
-                        n_jobs=None, random_state=None, **_):
+                        n_jobs=None, random_state=None):
 
     # Original performance
     if target_type is None:
@@ -1805,7 +1820,7 @@ def plot_roc(ax, y, yhat,
         roc_auc = roc_auc_score(y, yhat)
         # sns.lineplot(fpr, tpr, ax=ax, palette=sns.xkcd_palette(["red"]))
         ax.plot(fpr, tpr)
-        ax.set_title("ROC (AUC = " + format(roc_auc, "0.2f") + ")")
+        ax.set_title(f"ROC (AUC = {roc_auc:0.2f})")
         
     # MULTICLASS
     else:
@@ -1990,14 +2005,14 @@ def plot_precision_recall(ax, y, yhat, annotate=True, fontsize=10):
     ax.plot(rec, prec)
     props = {'xlabel': r"recall=tpr: P($\^y$=1|$y$=1)",
              'ylabel': r"precision: P($y$=1|$\^y$=1)",
-             'title': "Precision Recall Curve (AUC = " + format(prec_rec_auc, "0.2f") + ")"}
+             'title': f"Precision Recall Curve (AUC = {prec_rec_auc:0.2f})"}
     ax.set(**props)
 
     # annotate text
     if annotate:
         for thres in np.arange(0.1, 1, 0.1):
             i_thres = np.argmax(cutoff > thres)
-            ax.annotate(format(thres, "0.1f"), (rec[i_thres], prec[i_thres]), fontsize=fontsize)
+            ax.annotate(f"{thres:0.1f}", (rec[i_thres], prec[i_thres]), fontsize=fontsize)
 
 
 # Plot precision curve
@@ -2025,7 +2040,7 @@ def plot_precision(ax, y, yhat, annotate=True, fontsize=10):
         for thres in np.arange(0.1, 1, 0.1):
             i_thres = np.argmax(cutoff > thres)
             if i_thres:
-                ax.annotate(format(thres, "0.1f"), (pct_tested[i_thres], prec[i_thres]),
+                ax.annotate(f"{thres:0.1f}", (pct_tested[i_thres], prec[i_thres]),
                             fontsize=fontsize)
 
 
@@ -2079,7 +2094,7 @@ def get_plotcalls_model_performance_REGR(y, yhat,
 
     # Define plot dict
     d_calls = dict()
-    title = r"Observed vs. Fitted ($\rho_{Spearman}$ = " + format(spear(y, yhat), "0.2f") + ")"
+    title = r"Observed vs. Fitted ($\rho_{Spearman}$ = " + f"{spear(y, yhat):0.2f})"
     d_calls["observed_vs_fitted"] = (plot_nume_REGR, dict(feature=yhat, target=y, 
                                                           feature_name=r"$\^y$", target_name="y",
                                                           title=title,
@@ -2165,7 +2180,7 @@ def plot_variable_importance(ax,
 
     sns.barplot(x=importance, y=features, hue=category,
                 palette=category_color_palette, dodge=False, ax=ax)
-    ax.set_title("Top{0: .0f} Feature Importances".format(len(features)))
+    ax.set_title(f"Top{len(features): .0f} Feature Importances")
     ax.set_xlabel(r"permutation importance")
     if max_score_diff is not None:
         ax.set_xlabel(ax.get_xlabel() + " (100 = " + str(max_score_diff) + r" score-$\Delta$)")

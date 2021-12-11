@@ -28,7 +28,7 @@ from xgboost.sklearn import XGBRegressor
 import utils_plots as up
 
 # Setting
-import settings as sett
+import settings as s
 
 
 # --- Parameter --------------------------------------------------------------------------
