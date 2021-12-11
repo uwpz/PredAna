@@ -30,8 +30,8 @@ import settings as s
 PLOT = True  # Flag helping to skip all plotting (and only process data)
 # Interactive plotting: use "%matplotlib" to deactivate and "%natplotlib inline" for inline plotting and ...
 # ... use "%matpltlib qt" for standard interactive window (then use "plt.ioff()/ion()" to deactivate/activate)
-%matplotlib
-plt.ioff()
+%matplotlib inline
+#plt.ioff()
 
 # Specific parameters 
 TARGET_TYPES = ["REGR", "CLASS", "MULTICLASS"]
