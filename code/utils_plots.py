@@ -13,7 +13,7 @@ from joblib import Parallel, delayed
 import copy
 import warnings
 import time
-from typing import Union#, Literal
+from typing import Union, Literal
 from inspect import getargspec
 
 # Scikit
@@ -25,7 +25,6 @@ from sklearn.preprocessing import OneHotEncoder, KBinsDiscretizer, MinMaxScaler
 from sklearn.utils.multiclass import type_of_target, unique_labels
 from sklearn.utils import _safe_indexing
 from sklearn.base import BaseEstimator, TransformerMixin, clone  # ClassifierMixin
-from sklearn.calibration import calibration_curve
 
 # ML
 import xgboost as xgb
@@ -53,8 +52,6 @@ def debugtest(a=1, b=2):
     print("blub")
     # print("blub2")
     # print("blub3")
-    print(1)
-    print(2)
     return "done"
 '''
 
@@ -83,7 +80,7 @@ def kwargs_reduce(kwargs: dict, function) -> dict:
 
 
 def diff(a, b) -> Union[list, np.ndarray]:  
-    """ Creates setdiff i.e. a_not_in_b for arrays or lists """
+    """ Creates setdiff i.e. a_not_in_b, for arrays or lists """
     a_not_b = np.setdiff1d(a, b, True)
     if (type(a) is list and type(b) is list):
         a_not_b = list(a_not_b)
@@ -111,7 +108,6 @@ def logit(p: float) -> float:
 
 def inv_logit(p):
     return np.exp(p) / (1 + np.exp(p))
-'''
 
 
 def show_figure(fig):
@@ -120,13 +116,13 @@ def show_figure(fig):
     new_manager = dummy.canvas.manager
     new_manager.canvas.figure = fig
     fig.set_canvas(new_manager.canvas)
-
+'''
 
 # Plot list of tuples (plot_call, kwargs)
 def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None, constrained_layout=False):
     """
-    Plot list of tuples (plot_function, {kwargs}) with plot_function must have 'ax' parameter like
-    seaborn or pandas plots
+    Plot list of tuples (plot_function, {kwargs}) with plot_functions that must have 'ax' parameter like
+    seaborn or pandas plot and kwargs representing function parameters
     
     Parameters
     ----------
@@ -139,13 +135,13 @@ def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None, c
     figsize: tuple(int, int)
         Width and height of plot in inches
     pdf_path: str
-        Location of pdf (optional)
+        Location of pdf to print to (optional)
     constrained_layout: bool
         Use as alternative to tight_layout?
         
     Returns
     ------- 
-    List of pages as tuples (figure of page, axes of figure)
+    List of pages as tuples (figure of page, axes of figure), i.e. each tuple is similar to what plt.subplots() returns
     """
 
     # Build pages 
@@ -168,7 +164,7 @@ def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None, c
                 for k in range(i_ax, n_rows * n_cols):
                     axes.flat[k].axis("off")
 
-            # Write pdf
+            # Constrained or tight layout?
             if constrained_layout:
                 fig.set_constrained_layout_pads(w_pad=4 / 72, h_pad=4 / 72, hspace=0.1, wspace=0.1)
             else:
@@ -219,15 +215,35 @@ def ame(y, yhat) -> float:
     return np.abs(np.mean(y - yhat))
 
 
+def amde(y, yhat) -> float:
+    """ Absolute median error"""
+    return np.abs(np.median(y - yhat))
+
+
 def mae(y, yhat) -> float:
     """ Mean absolute error """
     return np.mean(np.abs(y - yhat))
 
 
+def mdae(y, yhat) -> float:
+    """ Median absolute error """
+    return np.median(np.abs(y - yhat))
+
+
+def smape(y, yhat) -> float:
+    """ Symmetric mean absolute percentage error """
+    return np.mean(200 * np.abs(y - yhat) / (np.abs(y) + np.abs(yhat)))
+
+
+def smdape(y, yhat) -> float:
+    """ Symmetric median absolute percentage error """
+    return np.median(200 * np.abs(y - yhat) / (np.abs(y) + np.abs(yhat)))
+
+
 # Class + Multiclass
 
 def auc(y, yhat) -> float:
-    """ AUC (working also for regression task which is basically the concordance) """
+    """ AUC (working also for regression task which is then basically the concordance) """
     
     # Usually yhat is a matrix, so reduce it to 1-dim array
     yhat = reduce2prob(yhat)
@@ -237,8 +253,7 @@ def auc(y, yhat) -> float:
         yhat = MinMaxScaler().fit_transform(yhat.reshape(-1, 1))[:, 0]
         y = MinMaxScaler().fit_transform(y)   
 
-    auc = roc_auc_score(y, yhat, multi_class="ovr")
-    return auc
+    return roc_auc_score(y, yhat, multi_class="ovr")
 
 
 def acc(y, yhat):
@@ -246,12 +261,12 @@ def acc(y, yhat):
     if yhat.ndim > 1:
         yhat = yhat.argmax(axis=1)
     if y.ndim > 1:
-        y = y.values.argmax(axis=1)
+        y = pd.DataFrame(y).values.argmax(axis=1)
     return accuracy_score(y, yhat)
 
 
-# Scoring metrics
-d_scoring = {"REGR": {"spear": make_scorer(spear, greater_is_better=True),
+# Standard scoring metrics
+D_SCORER = {"REGR": {"spear": make_scorer(spear, greater_is_better=True),
                       "rmse": make_scorer(rmse, greater_is_better=False),
                       "ame": make_scorer(ame, greater_is_better=False),
                       "mae": make_scorer(mae, greater_is_better=False)},
@@ -278,30 +293,55 @@ def value_counts(df, topn=5, dtypes=None):
         Dataframe comprising columns to be summarized
     topn: integer
         Restrict number of member listings
-    dtype: list or None, default=["object"]
+    dtype: list or None
         None or list of dtypes (e.g. ["object"]) to filter. 
         
     Returns
     ------- 
-    dataframe which comprises summary of variables
+    Dataframe which comprises summary of variables
     """
     if dtypes is not None:
         df_select = df.select_dtypes(dtypes)
     else:
         df_select = df
-    return pd.concat([(df_select[catname].value_counts().iloc[: topn].reset_index()
-                       .rename(columns={"index": catname, catname: "#"}))
-                      for catname in df_select.columns.values],
-                     axis=1).fillna("")
+    df_return = pd.concat([(df_select[catname].value_counts().reset_index()
+                            .pipe(lambda x: x.rename(columns={"index": f"{catname} ({str(len(x))})", catname: ""}))
+                            .iloc[:topn, :])
+                           for catname in df_select.columns.values],
+                          axis=1).fillna("")
+    return df_return
 
 
 # Binning with correct label
-def bin(feature, n_bins: int=5, precision=3):
+def bin(feature, n_bins=5, precision=3) -> pd.Series:
+    """
+    Bins a numeric feature and assigns a verbose label, describing the interval range of the bin
+
+    Parameters
+    ----------
+    feature: Numpy array or Pandas series
+        Feature to bin
+    n_bins: int
+        Number of bins
+    precision: int
+        Precision of interval labels
+
+    Returns
+    -------
+    String series
+    """
+    # Transform, e.g. to "q0 (left-border, right-border)"
     feature_binned = pd.qcut(feature, n_bins, duplicates="drop", precision=precision)
-    feature_binned = ("q" + feature_binned.cat.codes.astype("str") + " " +
-                      feature_binned.astype("str").str.replace("\(" + str(feature_binned.cat.categories[0].left),
-                                                                "[" + str(pd.Series(feature).min()
-                                                                          .round(precision))))
+    categories = feature_binned.cat.categories
+    feature_binned = "q" + feature_binned.cat.codes.astype("str") + " " + feature_binned.astype("str")
+    
+    # Replace first category starting interval string with correct label
+    feature_binned = feature_binned.str.replace("\(" + str(categories[0].left),
+                                                "[" + str(pd.Series(feature).min().round(precision)))
+    
+    # Reassign missings
+    feature_binned = feature_binned.replace({"q-1 nan": np.nan})
+    
     return feature_binned
 
 
@@ -325,6 +365,8 @@ def variable_performance(feature, target, scorer, target_type=None, splitter=KFo
     splitter: sklearn.model_selection splitter
     groups: Numpy array or Pandas series
         Grouping variable in case of using Grouped splitter
+    verbose: Boolean
+        Print processing information
     
     Returns
     -------
@@ -357,21 +399,6 @@ def variable_performance(feature, target, scorer, target_type=None, splitter=KFo
         scoring=scorer))
 
     return perf
-
-"""
-Description
-
-Parameters
-----------
-var1: Dataframe
-    Explanation
-var2: integer
-    Explanation
-
-Returns
--------
-Description
-"""
 
 
 # Winsorize
@@ -416,6 +443,20 @@ class Winsorize(BaseEstimator, TransformerMixin):
 
 # Map Non-topn frequent members of a string column to "other" label
 class Collapse(BaseEstimator, TransformerMixin):
+    """
+    Collapsing transformer mapping non-topN frequent member of a categorical feature to "other" label 
+
+    Parameters
+    ----------
+    n_top: int, default=10
+        Number of topN members that are not collapsed
+    other_label: str, default="_OTHER_"
+        Collective member name to which the non-topN frequent members are mapped ("collapsed")
+
+    Attributes
+    ----------
+    d_top_: dictionary comprising per feature the names of the topN members
+    """
     def __init__(self, n_top=10, other_label="_OTHER_"):
         self.n_top = n_top
         self.other_label = other_label
@@ -432,11 +473,22 @@ class Collapse(BaseEstimator, TransformerMixin):
 
 # Impute Mode (simpleimputer is too slow)
 class ImputeMode(BaseEstimator, TransformerMixin):
+    """
+    Imputing transformer for categorical feature which imputes the mode member (as scikit's simpleimputer is too slow)
+
+    Parameters
+    ----------
+    None
+
+    Attributes
+    ----------
+    impute_values_: dictionary comprising per feature the label of the most frequent member
+    """
     def __init__(self):
         pass
 
     def fit(self, X):
-        self.impute_values_ = pd.DataFrame(X).mode().iloc[0]
+        self.impute_values_ = pd.DataFrame(X).mode().iloc[0].to_dict()
         return self
 
     def transform(self, X):
@@ -446,7 +498,7 @@ class ImputeMode(BaseEstimator, TransformerMixin):
 
 # --- Plots --------------------------------------------------------------------------
 
-def helper_calc_barboxwidth(feature, target, min_width=0.2):
+def _helper_calc_barboxwidth(feature, target, min_width=0.2):
     df_hlp = pd.crosstab(feature, target)
     df_barboxwidth = (df_hlp.div(df_hlp.sum(axis=1), axis=0)
                       .assign(w=df_hlp.sum(axis=1))
@@ -459,7 +511,7 @@ def helper_calc_barboxwidth(feature, target, min_width=0.2):
     return df_barboxwidth
 
 
-def helper_adapt_feature_target(feature, target, feature_name, target_name, verbose=True):
+def _helper_adapt_feature_target(feature, target, feature_name, target_name, verbose=True):
     # Convert to Series and adapt labels
     if not isinstance(feature, pd.Series):
         feature = pd.Series(feature)
@@ -496,7 +548,7 @@ def helper_adapt_feature_target(feature, target, feature_name, target_name, verb
     return (feature, target, pct_miss_feature)
 
 
-def helper_inner_barplot(ax, x, y, inset_size=0.2):
+def _helper_inner_barplot(ax, x, y, inset_size=0.2):
     # Memorize ticks and limits
     xticks = ax.get_xticks()
     xlim = ax.get_xlim()
@@ -530,7 +582,7 @@ def helper_inner_barplot(ax, x, y, inset_size=0.2):
     _ = ax.set_xticks(xticks[(xticks >= xlim[0]) & (xticks <= xlim[1])])
     
     
-def helper_inner_barplot_rotated(ax, x, y, inset_size=0.2):
+def _helper_inner_barplot_rotated(ax, x, y, inset_size=0.2):
     # Memorize ticks and limits
     yticks = ax.get_yticks()
     ylim = ax.get_ylim()
@@ -570,12 +622,50 @@ def plot_cate_CLASS(ax,
                     target_lim=None,
                     min_width=0.2, inset_size=0.2, refline=True,
                     title=None,
-                    add_miss_info=True,
+                    add_miss_info=False,
                     color=list(sns.color_palette("colorblind").as_hex()),
                     verbose=True):
+    """
+    Plots categorical feature vs classfication target
 
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot
+    feature: Numpy array or Pandas series
+        Feature to plot on y-axis
+    target: Numpy array or Pandas series
+        Target to plot on x-axis
+    feature_nmae: str (optional)
+        If specified used as feature's name/label in plot
+    target_nmae: str (optional)
+        If specified used as target's name/label in plot
+    target_category: str or int (optional)
+        If not specified the minority class is used and plotted
+    target_lim: 2-tuple of float or int
+        Limits the y-axis on which the target is plotted
+    min_width: float
+        Minimum width of bars. Per default the frequency determines the width which might end with a "line". 
+        Can be orriden by this paramter
+    inset_size: float
+        Relative size of distribution bar plot on y-axis
+    refline: boolean
+        Print a reference line representing the base rate
+    title: str
+        Title of plot
+    add_miss_info: boolean
+        Show percentage of missings of feature in feature's axis label
+    color: list
+        List of colors assigned to target's categories
+    verbose: Boolean
+        Print processing information
+    
+    Returns
+    -------
+    Nothing
+    """
     # Adapt feature and target
-    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name, 
+    feature, target, pct_miss_feature = _helper_adapt_feature_target(feature, target, feature_name, target_name, 
                                                                     verbose=verbose)
 
     # Adapt color
@@ -591,7 +681,7 @@ def plot_cate_CLASS(ax,
         target_category = target.value_counts().sort_values().index.values[0]
 
     # Prepare data
-    df_plot = helper_calc_barboxwidth(feature, target, min_width=min_width)
+    df_plot = _helper_calc_barboxwidth(feature, target, min_width=min_width)
 
     # Barplot
     ax.barh(df_plot[feature.name + "_fmt"], df_plot[target_category], height=df_plot["w"],
@@ -606,7 +696,7 @@ def plot_cate_CLASS(ax,
         ax.axvline((target == target_category).sum() / len(target), linestyle="dotted", color="black")
 
     # Inner barplot
-    helper_inner_barplot(ax, x=df_plot[feature.name + "_fmt"], y=df_plot["pct"], inset_size=inset_size)
+    _helper_inner_barplot(ax, x=df_plot[feature.name + "_fmt"], y=df_plot["pct"], inset_size=inset_size)
 
     # Missing information
     if add_miss_info:
@@ -617,8 +707,6 @@ def plot_cate_CLASS(ax,
 def plot_cate_MULTICLASS(ax,
                          feature, target,
                          feature_name=None, target_name=None,
-                         target_category=None,
-                         target_lim=None,
                          min_width=0.2, inset_size=0.2, refline=True,
                          title=None,
                          add_miss_info=True,
@@ -628,7 +716,7 @@ def plot_cate_MULTICLASS(ax,
                          verbose=True):
 
     # Adapt feature and target
-    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name, 
+    feature, target, pct_miss_feature = _helper_adapt_feature_target(feature, target, feature_name, target_name, 
                                                                     verbose=verbose)
 
     # Add title
@@ -636,7 +724,7 @@ def plot_cate_MULTICLASS(ax,
         title = feature.name
 
     # Prepare data
-    df_plot = helper_calc_barboxwidth(feature, target, min_width=min_width)
+    df_plot = _helper_calc_barboxwidth(feature, target, min_width=min_width)
     
     # Reverse
     if reverse:
@@ -659,9 +747,9 @@ def plot_cate_MULTICLASS(ax,
 
     # Inner barplot
     if not exchange_x_y_axis:
-        helper_inner_barplot(ax, x=df_plot[feature.name + "_fmt"], y=df_plot["pct"], inset_size=inset_size)
+        _helper_inner_barplot(ax, x=df_plot[feature.name + "_fmt"], y=df_plot["pct"], inset_size=inset_size)
     else:
-        helper_inner_barplot_rotated(ax, x=df_plot[feature.name + "_fmt"], y=df_plot["pct"], inset_size=inset_size)
+        _helper_inner_barplot_rotated(ax, x=df_plot[feature.name + "_fmt"], y=df_plot["pct"], inset_size=inset_size)
         
     # Missing information
     if add_miss_info:
@@ -680,7 +768,7 @@ def plot_cate_REGR(ax,
                    verbose=True):
 
     # Adapt feature and target
-    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name,
+    feature, target, pct_miss_feature = _helper_adapt_feature_target(feature, target, feature_name, target_name,
                                                                     verbose=verbose)
 
     # Adapt color
@@ -692,7 +780,7 @@ def plot_cate_REGR(ax,
         title = feature.name
 
     # Prepare data
-    df_plot = helper_calc_barboxwidth(feature, np.tile("dummy", len(feature)),
+    df_plot = _helper_calc_barboxwidth(feature, np.tile("dummy", len(feature)),
                                       min_width=min_width)
 
     # Boxplot
@@ -717,7 +805,7 @@ def plot_cate_REGR(ax,
         ax.axvline(target.mean(), linestyle="dotted", color="black")
 
     # Inner barplot
-    helper_inner_barplot(ax, x=np.arange(len(df_plot)) + 1, y=df_plot["pct"],
+    _helper_inner_barplot(ax, x=np.arange(len(df_plot)) + 1, y=df_plot["pct"],
                          inset_size=inset_size)
 
     # Missing information
@@ -738,7 +826,7 @@ def plot_nume_CLASS(ax,
                     verbose=True):
 
     # Adapt feature and target
-    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name,
+    feature, target, pct_miss_feature = _helper_adapt_feature_target(feature, target, feature_name, target_name,
                                                                     verbose=verbose)
 
     # Add title
@@ -815,7 +903,7 @@ def plot_nume_REGR(ax,
                    verbose=True):
 
     # Adapt feature and target
-    feature, target, pct_miss_feature = helper_adapt_feature_target(feature, target, feature_name, target_name,
+    feature, target, pct_miss_feature = _helper_adapt_feature_target(feature, target, feature_name, target_name,
                                                                     verbose=verbose)
 
     # Add title
@@ -883,7 +971,7 @@ def plot_nume_REGR(ax,
             ax.plot(df_lowess["x"], df_lowess["yhat"], color="black")
                         
     if add_miss_info:
-        ax.set_xlabel(ax.get_ylabel() + f" ({pct_miss_feature:0.1f}% NA)")
+        ax.set_xlabel(ax.get_xlabel() + f" ({pct_miss_feature:0.1f}% NA)")
 
     if title is not None:
         ax.set_title(title)
@@ -1109,7 +1197,7 @@ def plot_corr(ax, df, method, absolute=True, cutoff=None, n_jobs=1):
     # Cate
     else:
         if method not in ["cramersv"]:
-            raise Exception('False method for numeric values: Choose "cramersv"')
+            raise Exception('False method for categorical values: Choose "cramersv"')
         n = df.shape[1]
         df_corr = pd.DataFrame(np.zeros([n, n]), index=df.columns.values, columns=df.columns.values)
         l_tup = [(i, j) for i in range(n) for j in range(i + 1, n)]
@@ -2250,7 +2338,7 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
         
         # Distribution
         if feature_ref is not None:
-            df_plot = df_plot.merge(helper_calc_barboxwidth(feature_ref, np.tile(1, len(feature_ref)), 
+            df_plot = df_plot.merge(_helper_calc_barboxwidth(feature_ref, np.tile(1, len(feature_ref)), 
                                                             min_width=min_width),
                                     how="inner")
             '''
@@ -2276,7 +2364,7 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
             ax.axvline(refline, linestyle="dotted", color="black")  # priori line
             
         # Inner barplot
-        helper_inner_barplot(ax, x=df_plot[feature_name + "_fmt"], y=df_plot["pct"], inset_size=0.2)
+        _helper_inner_barplot(ax, x=df_plot[feature_name + "_fmt"], y=df_plot["pct"], inset_size=0.2)
 
         # Axis style
         ax.set_title(feature_name)
