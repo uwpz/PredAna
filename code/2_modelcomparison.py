@@ -2,7 +2,7 @@
 # Initialize: Packages, functions, parameters
 ########################################################################################################################
 
-# --- Packages ------------------------------------------------------------------------------------
+# --- Packages ---------------------------------------------------------------------------------------------------------
 
 # General
 import numpy as np
@@ -31,13 +31,13 @@ from tensorflow.keras.wrappers.scikit_learn import KerasClassifier, KerasRegress
 # Custom functions and classes
 import utils_plots as up
 
-# Setting
+# Settings
 import settings as s
 
 
 # --- Parameter --------------------------------------------------------------------------------------------------------
 
-TARGET_TYPE = "CLASS"
+TARGET_TYPE = "MULTICLASS"
 #for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
 # Main parameter
@@ -54,21 +54,21 @@ for key, val in d_pick.items():
 
 
 
-####################################################################################################################
+########################################################################################################################
 # Prepare data
-####################################################################################################################
+########################################################################################################################
 
-# --- Sample data --------------------------------------------------------------------------------------------------
+# --- Sample data ------------------------------------------------------------------------------------------------------
 
-# Undersample only training data (take all but n_maxpersample at most)
+# Undersample only training data (take all but n_max_per_level at most)
 if TARGET_TYPE == "REGR":
     df_tmp = df.query("fold == 'train'").sample(n=2000, frac=None).reset_index(drop=True)
 else:
     df.query("fold == 'train'")[target_name].value_counts()
     df_tmp, b_sample, b_all = up.undersample(df.query("fold == 'train'"), target=target_name,
                                              n_max_per_level=2000)
-    print(b_sample, b_all)
-df_tune = (pd.concat([df_tmp, df.query("fold == 'test'")], sort=False)
+    print(b_sample, b_all)  # base rates
+df_tune = (pd.concat([df_tmp, df.query("fold == 'test'")], sort=False)  # take whole test data
            .sample(frac=1)  # shuffle
            .reset_index(drop=True))
 df_tune.groupby("fold")[target_name].describe()
@@ -84,24 +84,21 @@ X_encoded = MinMaxScaler().fit_transform(df_tune[features_encoded])
 
 '''
 tmp = (ColumnTransformer([('nume', MinMaxScaler(), np.array(nume_standard)),
-                                ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"), 
+                          ('cate', OneHotEncoder(sparse=True, handle_unknown="ignore"), 
                                 np.array(cate_standard))]))
 tmp.named_transformers_["cate"].categories_
 '''
 
 
-# --- Define some splits -------------------------------------------------------------------------------------------
+# --- Define some possible CV strategies -------------------------------------------------------------------------------
 
 cv_index = PredefinedSplit(df_tune["fold"].map({"train": -1, "test": 0}).values)
-df_tune["fold"] = pd.cut(pd.Series(np.arange(len(df_tune))), bins=5, labels=False)
-cv_tmp = PredefinedSplit(df_tune["fold"].values)
 cv_5fold = KFold(5, shuffle=True, random_state=42)
 cv_5foldsep = up.KFoldSep(5, random_state=42)
 
 '''
 # Test a split
-df_tune["fold"].value_counts()
-split = cv_tmp.split(df_tune)
+split = cv_5fold.split(df_tune)
 i_train, i_test = next(split)
 df_tune["fold"].iloc[i_train].describe()
 df_tune["fold"].iloc[i_test].describe()
@@ -113,11 +110,11 @@ print(np.sort(i_test))
 
 
 
-####################################################################################################################
+########################################################################################################################
 # # Test an algorithm (and determine tuning parameter grid)
-####################################################################################################################
+########################################################################################################################
 
-# --- Lasso / Elastic Net ------------------------------------------------------------------------------------------
+# --- Lasso / Elastic Net ----------------------------------------------------------------------------------------------
 
 fit = (GridSearchCV(SGDRegressor(penalty="ElasticNet", warm_start=True) if TARGET_TYPE == "REGR" else
                     SGDClassifier(loss="log", penalty="ElasticNet", warm_start=True),  # , tol=1e-2
@@ -132,7 +129,7 @@ fit = (GridSearchCV(SGDRegressor(penalty="ElasticNet", warm_start=True) if TARGE
             y=df_tune[target_name]))
 # Plot: use metric="score" if scoring has only 1 metric
 fig = up.plot_cvresults(fit.cv_results_, metric=metric, x_var="alpha", color_var="l1_ratio")
-fig.savefig(s.PLOTLOC + "2__tune_sgd__" + TARGET_TYPE + ".pdf")
+fig.savefig(f"{s.PLOTLOC}2__tune_sgd__{TARGET_TYPE}.pdf")
 
 # Usually better alternative
 if TARGET_TYPE in ["CLASS", "MULTICLASS"]:
@@ -146,7 +143,7 @@ if TARGET_TYPE in ["CLASS", "MULTICLASS"]:
            .fit(X=X_binned,
                 y=df_tune[target_name]))
     fig = up.plot_cvresults(fit.cv_results_, metric=metric, x_var="C")
-    fig.savefig(s.PLOTLOC + "2__tune_lasso__" + TARGET_TYPE + ".pdf")
+    fig.savefig(f"{s.PLOTLOC}2__tune_lasso__{TARGET_TYPE}.pdf")
 else:
     fit = (GridSearchCV(ElasticNet(),
                         {"alpha": [2 ** x for x in range(-8, -20, -2)],
@@ -159,10 +156,10 @@ else:
            .fit(X=X_binned,
                 y=df_tune[target_name]))
     fig = up.plot_cvresults(fit.cv_results_, metric=metric, x_var="alpha", color_var="l1_ratio")
-    fig.savefig(s.PLOTLOC + "2__tune_enet__" + TARGET_TYPE + ".pdf")
+    fig.savefig(f"{s.PLOTLOC}2__tune_enet__{TARGET_TYPE}.pdf")
 
 
-# --- Random Forest ------------------------------------------------------------------------------------------------
+# --- Random Forest ----------------------------------------------------------------------------------------------------
 
 fit = (GridSearchCV(RandomForestRegressor() if TARGET_TYPE == "REGR" else
                     RandomForestClassifier(),
@@ -178,10 +175,10 @@ fit = (GridSearchCV(RandomForestRegressor() if TARGET_TYPE == "REGR" else
             y=df_tune[target_name]))
 fig = up.plot_cvresults(fit.cv_results_, metric=metric,
                         x_var="n_estimators", color_var="min_samples_leaf")
-fig.savefig(s.PLOTLOC + "2__tune_rforest__" + TARGET_TYPE + ".pdf")
+fig.savefig(f"{s.PLOTLOC}2__tune_rforest__{TARGET_TYPE}.pdf")
 
 
-# --- XGBoost ------------------------------------------------------------------------------------------------------
+# --- XGBoost ----------------------------------------------------------------------------------------------------------
 start = time.time()
 fit = (up.GridSearchCV_xlgb(xgb.XGBRegressor(verbosity=0) if TARGET_TYPE == "REGR" else
                             xgb.XGBClassifier(verbosity=0),
@@ -197,10 +194,10 @@ fit = (up.GridSearchCV_xlgb(xgb.XGBRegressor(verbosity=0) if TARGET_TYPE == "REG
 print(time.time() - start)
 fig = up.plot_cvresults(fit.cv_results_, metric=metric,
                         x_var="n_estimators", color_var="max_depth", column_var="min_child_weight")
-fig.savefig(s.PLOTLOC + "2__tune_xgb__" + TARGET_TYPE + ".pdf")
+fig.savefig(f"{s.PLOTLOC}2__tune_xgb__{TARGET_TYPE}.pdf")
 
 
-# --- LightGBM -----------------------------------------------------------------------------------------------------
+# --- LightGBM ---------------------------------------------------------------------------------------------------------
 
 # Indices of categorical variables (for Lightgbm)
 i_cate_standard = [i for i in range(len(nume_standard)) if nume_standard[i].endswith("_ENCODED")]
@@ -225,10 +222,10 @@ fit = (up.GridSearchCV_xlgb(lgbm.LGBMRegressor() if TARGET_TYPE == "REGR" else
 print(time.time() - start)
 fig = up.plot_cvresults(fit.cv_results_, metric=metric,
                         x_var="n_estimators", color_var="num_leaves", column_var="min_child_samples")
-fig.savefig(s.PLOTLOC + "2__tune_lgbm__" + TARGET_TYPE + ".pdf")
+fig.savefig(f"{s.PLOTLOC}2__tune_lgbm__{TARGET_TYPE}.pdf")
 
 
-# --- DeepL --------------------------------------------------------------------------------------------------------
+# --- DeepL ------------------------------------------------------------------------------------------------------------
 
 # Keras wrapper for Scikit
 def keras_model(input_dim, output_dim, TARGET_TYPE,
@@ -298,15 +295,15 @@ fit = (GridSearchCV(KerasRegressor(build_fn=keras_model,
             df_tune[target_name])))
 fig = up.plot_cvresults(fit.cv_results_, metric=metric,
                         x_var="epochs", color_var="batch_normalization", column_var="activation", row_var="size")
-fig.savefig(s.PLOTLOC + "2__tune_deepl__" + TARGET_TYPE + ".pdf")
+fig.savefig(f"{s.PLOTLOC}2__tune_deepl__{TARGET_TYPE}.pdf")
 
 
 
-####################################################################################################################
+########################################################################################################################
 # Simulation: compare algorithms
-####################################################################################################################
+########################################################################################################################
 
-# --- Run methods --------------------------------------------------------------------------------------------------
+# --- Run methods ------------------------------------------------------------------------------------------------------
 
 df_modelcomp_result = pd.DataFrame()  # intialize
 
@@ -377,18 +374,18 @@ df_modelcomp_result = df_modelcomp_result.append(pd.DataFrame.from_dict(cvresult
                                                  ignore_index=True)
 
 
-# --- Plot model comparison ----------------------------------------------------------------------------------------
+# --- Plot model comparison --------------------------------------------------------------------------------------------
 
 fig, ax = plt.subplots(1, 1, figsize=(6, 6))
 up.plot_modelcomp(ax, df_modelcomp_result.rename(columns={"index": "run", "test_" + metric: metric}),
                   scorevar=metric)
-fig.savefig(s.PLOTLOC + "2__model_comparison__" + TARGET_TYPE + ".pdf")
+fig.savefig(f"{s.PLOTLOC}2__model_comparison__{TARGET_TYPE}.pdf")
 
 
 
-####################################################################################################################
+########################################################################################################################
 # Learning curve for winner algorithm
-####################################################################################################################
+########################################################################################################################
 
 # Calc learning curve
 n_train, score_train, score_test, time_train, time_test = learning_curve(
@@ -404,7 +401,7 @@ n_train, score_train, score_test, time_train, time_test = learning_curve(
         n_jobs=s.N_JOBS),
     X=X_standard,
     y=df_tune[target_name],
-    train_sizes=np.arange(0.1, 1.1, 0.2),
+    train_sizes=np.linspace(0.1, 1, 5),
     cv=cv_5fold.split(df_tune),
     scoring=scoring[metric],
     return_times=True,
@@ -413,4 +410,4 @@ n_train, score_train, score_test, time_train, time_test = learning_curve(
 # Plot it
 fig, ax = plt.subplots(1, 1, figsize=(6, 6))
 up.plot_learningcurve(ax, n_train, score_train, score_test, time_train)
-fig.savefig(s.PLOTLOC + "2__learningCurve__" + TARGET_TYPE + ".pdf")
+fig.savefig(f"{s.PLOTLOC}2__learningCurve__{TARGET_TYPE}.pdf")

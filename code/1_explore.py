@@ -5,7 +5,7 @@
 # --- Packages ---------------------------------------------------------------------------------------------------------
 
 # General
-import numpy as np 
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -14,7 +14,7 @@ import time
 from importlib import reload
 
 # Special
-from swifter import swifter  # ATTENTION: remove swifter if running into error when using
+from swifter import swifter  # ATTENTION: remove swifter calls below if running into error when using
 from category_encoders import target_encoder
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import KFold, ShuffleSplit, PredefinedSplit
@@ -22,7 +22,7 @@ from sklearn.model_selection import KFold, ShuffleSplit, PredefinedSplit
 # Custom functions and classes
 import utils_plots as up
 
-# Setting
+# Settings
 import settings as s
 
 
@@ -30,14 +30,16 @@ import settings as s
 
 # Plot
 PLOT = True
-#%matplotlib | %matplotlib qt | %matplotlib inline  # activate standard/inline window
-#plt.ioff() | plt.ion()  # stop/start standard window
-#plt.plot(1, 1)
+%matplotlib
+plt.ioff() 
+# %matplotlib | %matplotlib qt | %matplotlib inline  # activate standard/inline window
+# plt.ioff() | plt.ion()  # stop/start standard window
+# plt.plot(range(10), range(10))
 
-# Specific parameters 
+# Specific parameters
 TARGET_TYPES = ["REGR", "CLASS", "MULTICLASS"]
 MISSPCT_THRESHOLD = 0.95
-VARPERF_THRESHOLD = 0.53
+VARPERF_THRESHOLD_DATADRIFT = 0.53
 TOOMANY_THRESHOLD = 5
 
 
@@ -118,8 +120,7 @@ print(up.diff(df_meta_sub["variable"], df.columns))
 df["fold"] = np.where(df.index.isin(df.query("kaggle_fold == 'train'")
                                     .sample(frac=0.1, random_state=42).index.values),
                       "util", df["kaggle_fold"])
-#df["fold_num"] = df["fold"].replace({"train": 0, "util": 0, "test": 1})  # Used for pedicting test data
-
+# df["fold_num"] = df["fold"].replace({"train": 0, "util": 0, "test": 1})  # Used for pedicting test data
 
 
 ########################################################################################################################
@@ -136,24 +137,24 @@ df[nume].describe()
 # --- Missings + Outliers + Skewness -----------------------------------------------------------------------------------
 
 # Remove features with too many missings
-misspct = df[nume].isnull().mean().round(3)  
-print("misspct:\n", misspct.sort_values(ascending=False))  
-remove = misspct[misspct > MISSPCT_THRESHOLD].index.values.tolist()  
-nume = up.diff(nume, remove)  
+misspct = df[nume].isnull().mean().round(3)
+print("misspct:\n", misspct.sort_values(ascending=False))
+remove = misspct[misspct > MISSPCT_THRESHOLD].index.values.tolist()
+nume = up.diff(nume, remove)
 
 # Plot untransformed features -> check for outliers and skewness
 df[nume].describe()
 start = time.time()
 for TARGET_TYPE in TARGET_TYPES:
     if PLOT:
-        _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__distr_nume_orig__" + TARGET_TYPE + ".pdf",
+        _ = up.plot_l_calls(pdf_path=f"{s.PLOTLOC}1__distr_nume_orig__{TARGET_TYPE}.pdf",
                             l_calls=[(up.plot_feature_target,
-                                      dict(feature=df[feature], 
-                                           target=df["cnt_" + TARGET_TYPE])) 
-                                     for feature in nume])        
+                                      dict(feature=df[feature],
+                                           target=df["cnt_" + TARGET_TYPE]))
+                                     for feature in nume])
 print(time.time() - start)
-    
-# Winsorize 
+
+# Winsorize
 df[nume] = up.Winsorize(lower_quantile=None, upper_quantile=0.99).fit_transform(df[nume])
 
 # Log-Transform
@@ -181,26 +182,28 @@ print(onebin)
 
 for TARGET_TYPE in TARGET_TYPES:
     #TARGET_TYPE = "REGR"
-    
-    # Univariate variable performances 
-    varperf_nume = df[nume + nume_BINNED].swifter.progress_bar(False).apply(lambda x: (
-        up.variable_performance(x, df["cnt_" + TARGET_TYPE],
-                                splitter=ShuffleSplit(n_splits=1, test_size=0.2, random_state=42),
-                                scorer=up.D_SCORER[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" else "auc"])))
+
+    # Univariate variable performances
+    varperf_nume = df[nume + nume_BINNED].swifter.progress_bar(False).apply(
+        lambda x: (up.variable_performance(feature=x, 
+                                           target=df["cnt_" + TARGET_TYPE],
+                                           splitter=ShuffleSplit(n_splits=1, test_size=0.2, random_state=42),
+                                           scorer=up.D_SCORER[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" 
+                                                                           else "auc"])))
     print(varperf_nume.sort_values(ascending=False))
-    
+
     # Plot
     if PLOT:
-        _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__distr_nume__" + TARGET_TYPE + ".pdf", 
+        _ = up.plot_l_calls(pdf_path=f"{s.PLOTLOC}1__distr_nume__{TARGET_TYPE}.pdf",
                             l_calls=[(up.plot_feature_target,
-                                      dict(feature=df[feature], target=df["cnt_" + TARGET_TYPE], 
+                                      dict(feature=df[feature], target=df["cnt_" + TARGET_TYPE],
                                            title=f"{feature} (VI:{varperf_nume[feature]: 0.2f})",
                                            regplot_type="lowess",
-                                           add_miss_info=True if feature in nume else False)) 
+                                           add_miss_info=True if feature in nume else False))
                                      for feature in up.interleave(nume, nume_BINNED)])
 
 
-# --- Removing variables -----------------------------------------------------------------------------------------------
+# --- Removing variables (inlcuding correlation analysis) --------------------------------------------------------------
 
 # Remove leakage features
 remove = ["xxx", "xxx"]
@@ -211,7 +214,7 @@ df[nume].describe()
 _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__corr_nume.pdf", n_rows=1, n_cols=1, figsize=(6, 6),
                     l_calls=[(up.plot_corr,
                               dict(df=df[nume], method="spearman", cutoff=0))])
-remove = [""]
+remove = ["atemp"]
 nume = up.diff(nume, remove)
 ''' Alternative
 fig, ax = plt.subplots(1, 1, figsize=(6, 6))
@@ -221,28 +224,30 @@ fig.savefig(s.PLOTLOC + "1__corr_nume.pdf")
 '''
 
 
-# --- Detect data drift (time/fold depedency of features) -----------------------------------------------------------
+# --- Detect data drift (time/fold depedency of features) --------------------------------------------------------------
 
-# HINT: In case of having a detailed date variable this can be used as regression target here as well!
+# HINT: In case of having a detailed date variable, this can be used as regression target here as well!
 
-# Univariate variable importance (again ONLY for non-missing observations!)
-varperf_nume_fold = df[nume].swifter.apply(lambda x: up.variable_performance(x, df["fold"],
-                                                                             splitter=up.InSampleSplit(),
-                                                                             scorer=up.D_SCORER["CLASS"]["auc"]))
+# Univariate variable importance 
+varperf_nume_fold = df[nume].swifter.progress_bar(False).apply(
+    lambda x: up.variable_performance(feature=x, 
+                                      target=df["fold"],
+                                      splitter=up.InSampleSplit(),
+                                      scorer=up.D_SCORER["CLASS"]["auc"]))
 print(varperf_nume_fold.sort_values(ascending=False))
 
-# Plot: only variables with highest importance
-nume_toplot = varperf_nume_fold[varperf_nume_fold > VARPERF_THRESHOLD].index.values
+# Plot only variables with highest importance
+nume_toplot = varperf_nume_fold[varperf_nume_fold > VARPERF_THRESHOLD_DATADRIFT].index.values
 if len(nume_toplot):
     if PLOT:
-        _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__distr_nume_folddep" + TARGET_TYPE + ".pdf",
+        _ = up.plot_l_calls(pdf_path=f"{s.PLOTLOC}1__distr_nume_folddep__{TARGET_TYPE}.pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature], target=df["fold"],
                                            title=f"{feature} (VI:{varperf_nume_fold[feature]: 0.2f})",))
                                      for feature in nume_toplot])
 
 
-# --- Create missing indicator and impute feature missings-----------------------------------------------------------
+# --- Create missing indicator and impute feature missings--------------------------------------------------------------
 
 miss = df[nume].isnull().any()[lambda x: x].index.values.tolist()
 df[up.add("MISS_", miss)] = pd.DataFrame(np.where(df[miss].isnull(), "No", "Yes"))
@@ -253,12 +258,11 @@ df[miss] = SimpleImputer(strategy="median").fit_transform(df[miss])
 df[miss].isnull().sum()
 
 
-
 ########################################################################################################################
 # Categorical features: Explore and adapt
 ########################################################################################################################
 
-# --- Define categorical features ------------------------------------------------------------------------------------
+# --- Define categorical features --------------------------------------------------------------------------------------
 
 cate = df_meta_sub.loc[df_meta_sub.type.isin(["cate"]), "variable"].values.tolist()
 df[cate] = df[cate].astype("str")
@@ -274,16 +278,15 @@ df[cate].describe()
 # Create ordinal and binary-encoded features
 # ATTENTION: Usually this processing needs special adaption depending on the data
 ordi = ["hr", "mnth", "yr"]
-df[up.add(ordi, "_ENCODED")] = df[ordi].apply(lambda x: pd.to_numeric(x)) 
+df[up.add(ordi, "_ENCODED")] = df[ordi].apply(lambda x: pd.to_numeric(x))
 yesno = ["holiday", "workingday"] + ["MISS_" + x for x in miss]  # binary features
-df[up.add(yesno, "_ENCODED")] = df[yesno].apply(lambda x: x.map({"No": 0, "Yes": 1})) 
+df[up.add(yesno, "_ENCODED")] = df[yesno].apply(lambda x: x.map({"No": 0, "Yes": 1}))
 
 # Create target-encoded features for nominal variables
 nomi = up.diff(cate, ordi + yesno)
 df_util = df.query("fold == 'util'").reset_index(drop=True)
-df[up.add(nomi, "_ENCODED")] = target_encoder.TargetEncoder().fit(df_util[nomi], 
+df[up.add(nomi, "_ENCODED")] = target_encoder.TargetEncoder().fit(df_util[nomi],
                                                                   df_util["cnt_REGR"]).transform(df[nomi])
-#df = df.query("fold != 'util'").reset_index(drop=True)  # remove utility data
 
 # Get "too many members" columns and lump levels
 levinfo = df[cate].nunique().sort_values(ascending=False)  # number of levels
@@ -301,25 +304,26 @@ for TARGET_TYPE in TARGET_TYPES:
     #TARGET_TYPE = "CLASS"
 
     # Univariate variable importance
-    varperf_cate = df[cate + up.add("MISS_", miss)].swifter.progress_bar(False).apply(lambda x: (
-        up.variable_performance(x, df["cnt_" + TARGET_TYPE],
-                                splitter=ShuffleSplit(n_splits=1, test_size=0.2, random_state=42),
-                                scorer=up.D_SCORER[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" else "auc"])))
+    varperf_cate = df[cate + up.add("MISS_", miss)].swifter.progress_bar(False).apply(
+        lambda x: (up.variable_performance(feature=x, 
+                                           target=df["cnt_" + TARGET_TYPE],
+                                           splitter=ShuffleSplit(n_splits=1, test_size=0.2, random_state=42),
+                                           scorer=up.D_SCORER[TARGET_TYPE]["spear" if TARGET_TYPE == "REGR" 
+                                                                           else "auc"])))
     print(varperf_cate.sort_values(ascending=False))
 
     # Check
     if PLOT:
-        _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__distr_cate__" + TARGET_TYPE + ".pdf",
+        _ = up.plot_l_calls(pdf_path=f"{s.PLOTLOC}1__distr_cate__{TARGET_TYPE}.pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature],
                                            target=df["cnt_" + TARGET_TYPE],
                                            title=f"{feature} (VI:{varperf_cate[feature]: 0.2f})",
                                            add_miss_info=False))
                                      for feature in cate + up.add("MISS_", miss)])
-        
 
 
-# --- Removing variables -----------------------------------------------------------------------------------------------
+# --- Removing variables (inlcuding correlation analysis) --------------------------------------------------------------
 
 # Remove leakage variables
 cate = up.diff(cate, ["xxx"])
@@ -330,7 +334,8 @@ _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__corr_cate.pdf", n_rows=1, n_cols=1,
                     l_calls=[(up.plot_corr,
                               dict(df=df[cate + up.add("MISS_", miss)], method="cramersv", cutoff=0))])
 '''
-_ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__corr.pdf", n_rows=1, n_cols=1, figsize=(8, 6),
+# Interscale correlation!
+_ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__corr.pdf", n_rows=1, n_cols=1, figsize=(12, 12),
                     l_calls=[(up.plot_corr,
                               dict(df=df[cate + up.add("MISS_", miss) + up.add(nume,"_BINNED")], 
                                    method="cramersv", cutoff=0))])
@@ -339,18 +344,19 @@ _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__corr.pdf", n_rows=1, n_cols=1, figs
 
 # --- Time/fold depedency ----------------------------------------------------------------------------------------------
 
-# Hint: In case of having a detailed date variable this can be used as regression target here as well!
-# Univariate variable importance (again ONLY for non-missing observations!)
-varperf_cate_fold = df[cate + up.add("MISS_", miss)].swifter.apply(lambda x: (
-    up.variable_performance(x, df["fold"],
-                            splitter=up.InSampleSplit(),
-                            scorer=up.D_SCORER["CLASS"]["auc"])))
+# Hint: In case of having a detailed date variable it can be used as regression target here as well!
+# Univariate variable importance
+varperf_cate_fold = df[cate + up.add("MISS_", miss)].swifter.progress_bar(False).apply(
+    lambda x: (up.variable_performance(feature=x,
+                                       target=df["fold"],
+                                       splitter=up.InSampleSplit(),
+                                       scorer=up.D_SCORER["CLASS"]["auc"])))
 
 # Plot: only variables with with highest importance
-cate_toplot = varperf_cate_fold[varperf_cate_fold > VARPERF_THRESHOLD].index.values
+cate_toplot = varperf_cate_fold[varperf_cate_fold > VARPERF_THRESHOLD_DATADRIFT].index.values
 if len(cate_toplot):
     if PLOT:
-        _ = up.plot_l_calls(pdf_path=s.PLOTLOC + "1__distr_cate_folddep" + TARGET_TYPE + ".pdf",
+        _ = up.plot_l_calls(pdf_path=f"{s.PLOTLOC}1__distr_cate_folddep__{TARGET_TYPE}.pdf",
                             l_calls=[(up.plot_feature_target,
                                       dict(feature=df[feature],
                                            target=df["fold"],
@@ -362,8 +368,9 @@ if len(cate_toplot):
 # Prepare final data
 ########################################################################################################################
 
-# --- Add numeric target -----------------------------------------------------------------------------------------------------
-# Needed by some algorithms
+# --- Add numeric target -----------------------------------------------------------------------------------------------
+
+# Target mostly needs to be numeric
 df["cnt_REGR_num"] = df["cnt_REGR"]
 df["cnt_CLASS_num"] = df["cnt_CLASS"].str.slice(0, 1).astype("int")
 df["cnt_MULTICLASS_num"] = df["cnt_MULTICLASS"].str.slice(0, 1).astype("int")
@@ -371,14 +378,14 @@ df["cnt_MULTICLASS_num"] = df["cnt_MULTICLASS"].str.slice(0, 1).astype("int")
 
 # --- Define final features --------------------------------------------------------------------------------------------
 
-# Standard: can be used in combination by all algorithms
+# Standard: can be used together by all algorithms
 nume_standard = nume + up.add(toomany, "_ENCODED")
 cate_standard = cate + up.add("MISS_", miss)
 
 # Binned: can be used by elasticnet (without any numeric features) to mimic non-linear numeric effects
 features_binned = up.diff(up.add(nume, "_BINNED"), onebin) + cate
 
-# Encoded: can be used as complete feature-set for deeplearning (as bad with one-hot encoding) 
+# Encoded: can be used as complete feature-set for deeplearning (as bad with one-hot encoding)
 # or lightgbm (with additionally denoting encoded features as "categorical")
 features_encoded = np.unique(nume + up.add(cate, "_ENCODED") + ["MISS_" + x + "_ENCODED" for x in miss]).tolist()
 
@@ -388,7 +395,7 @@ up.diff(all_features, df.columns.values.tolist())
 up.diff(df.columns.values.tolist(), all_features)
 
 
-# --- Remove burned data -----------------------------------------------------------------------------------------------
+# --- Remove "burned" data -----------------------------------------------------------------------------------------------
 
 df = df.query("fold != 'util'").reset_index(drop=True)
 
@@ -404,6 +411,6 @@ with open(s.DATALOC + "1_explore.pkl", "wb") as file:
     pickle.dump({"df": df,
                  "nume_standard": nume_standard,
                  "cate_standard": cate_standard,
-                 "cate_binned": features_binned,
-                 "nume_encoded": features_encoded},
+                 "features_binned": features_binned,
+                 "features_encoded": features_encoded},
                 file)
