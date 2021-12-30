@@ -118,7 +118,6 @@ def show_figure(fig):
     fig.set_canvas(new_manager.canvas)
 
 
-
 # Plot list of tuples (plot_call, kwargs)
 def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None, constrained_layout=False):
     """
@@ -503,6 +502,11 @@ class ImputeMode(BaseEstimator, TransformerMixin):
 # --- Plots --------------------------------------------------------------------------
 
 def _helper_calc_barboxwidth(feature, target, min_width=0.2):
+    """ 
+    Helper function calculating widht of boxes or length of bars reflecting feature distribution used by
+    plot_cate_CLASS, plot_cate_MULTICLASS, plot_cate_REGR and plot_pd. 
+    Returns dataframe with corresponding information.
+    """
     df_hlp = pd.crosstab(feature, target)
     df_barboxwidth = (df_hlp.div(df_hlp.sum(axis=1), axis=0)
                       .assign(w=df_hlp.sum(axis=1))
@@ -515,7 +519,12 @@ def _helper_calc_barboxwidth(feature, target, min_width=0.2):
     return df_barboxwidth
 
 
-def _helper_adapt_feature_target(feature, target, feature_name, target_name, verbose=True):
+def _helper_adapt_feature_target(feature, target, feature_name, target_name, verbose=True) -> tuple:
+    """ 
+    Helper function transforming feature and target array into series with appropriate name with corresponding 
+    missings removed in both sereis, used by all plot_nume/cate_CLASS/MULTICLASS/REGR plot functions. 
+    Returns tuple of (feature, target, pct_miss_feature)
+    """
     # Convert to Series and adapt labels
     if not isinstance(feature, pd.Series):
         feature = pd.Series(feature)
@@ -553,6 +562,7 @@ def _helper_adapt_feature_target(feature, target, feature_name, target_name, ver
 
 
 def _helper_inner_barplot(ax, x, y, inset_size=0.2):
+    """ Helper function creating barplot, used as inner distribution plot by all plot_cate_xxx plots """
     # Memorize ticks and limits
     xticks = ax.get_xticks()
     xlim = ax.get_xlim()
@@ -587,6 +597,11 @@ def _helper_inner_barplot(ax, x, y, inset_size=0.2):
 
 
 def _helper_inner_barplot_rotated(ax, x, y, inset_size=0.2):
+    """ 
+    Helper function completely similar to _helper_inner_barplot but which rotated barplot, that can be
+    plotted on x-axis (in fact every "x"-function call is replaced by "y"-function call) 
+    """
+
     # Memorize ticks and limits
     yticks = ax.get_yticks()
     ylim = ax.get_ylim()
@@ -629,40 +644,40 @@ def plot_cate_CLASS(ax,
                     color=list(sns.color_palette("colorblind").as_hex()),
                     verbose=True):
     """
-    Plots categorical feature vs classfication target
+    Plots categorical feature vs classfication target (as bars).
 
     Parameters
     ----------
     ax: matplotlib ax
-        Ax which should be used by plot
+        Ax which should be used by plot.
     feature: Numpy array or Pandas series
-        Feature to plot on y-axis
+        Categorical feature (must be of dtype object or str) to plot on y-axis.
     target: Numpy array or Pandas series
-        Target to plot on x-axis
+        Classifiction target to plot on x-axis.
     feature_name: str (optional)
-        If specified used as feature's name/label in plot
+        If specified used as feature's name/label in plot.
     target_name: str (optional)
-        If specified used as target's name/label in plot
+        If specified used as target's name/label in plot.
     target_category: str or int (optional)
-        If not specified the minority class is used and plotted
+        If not specified the minority class is used and plotted.
     target_lim: 2-tuple of float or int
-        Limits the y-axis on which the target is plotted
+        Limits the y-axis on which the target is plotted.
     min_width: float
-        Minimum width of bars. Per default the feature_s member frequency determines the width per member
+        Minimum width of bars. Per default the feature's member frequency determines the width per member
         which might end with a "line". 
-        Can be orriden by this paramter and set to a minimum
+        Can be orriden by this paramter and set to a minimum.
     inset_size: float
-        Relative size of distribution bar plot on y-axis
+        Relative size of distribution bar plot on y-axis.
     refline: boolean
-        Print a reference line representing the base rate
+        Print a reference line representing the base rate.
     title: str
         Title of plot
     add_miss_info: boolean
-        Show percentage of missings in feature's axis label
-    color: list
-        List of colors assigned to target's categories
+        Show percentage of missings in feature's axis label.
+    color: list or str
+        Color used for bars. If list provided the second item is used.
     verbose: Boolean
-        Print processing information
+        Print processing information.
 
     Returns
     -------
@@ -718,7 +733,46 @@ def plot_cate_MULTICLASS(ax,
                          reverse=False,
                          exchange_x_y_axis=False,
                          verbose=True):
+    """
+    Plots categorical feature vs multiclass target (as segemented bars).
 
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    feature: Numpy array or Pandas series
+        Categorical feature (must be of dtype object or str) to plot on y-axis.
+    target: Numpy array or Pandas series
+        Multiclass target to plot on x-axis.
+    feature_name: str (optional)
+        If specified used as feature's name/label in plot.
+    target_name: str (optional)
+        If specified used as target's name/label in plot.
+    min_width: float
+        Minimum width of bars. Per default the feature's member frequency determines the width per member
+        which might end with a "line", which would prevent from distinguishing target members. 
+        Can be orriden by this paramter and set to a minimum.
+    inset_size: float
+        Relative size of distribution bar plot on y-axis.
+    refline: boolean
+        Print a reference line representing the base rate.
+    title: str
+        Title of plot.
+    add_miss_info: boolean
+        Show percentage of missings in feature's axis label.
+    color: list
+        List of colors assigned to target's categories.
+    reverse: boolean
+        Should bar segments be reversed?
+    exchange_x_y_axis: boolean
+        Should default horizontal bars on y-Axis be plotted as vertical bars on x-Axis?
+    verbose: Boolean
+        Print processing information.
+
+    Returns
+    -------
+    Nothing
+    """
     # Adapt feature and target
     feature, target, pct_miss_feature = _helper_adapt_feature_target(feature, target, feature_name, target_name,
                                                                      verbose=verbose)
@@ -770,7 +824,45 @@ def plot_cate_REGR(ax,
                    add_miss_info=True,
                    color=list(sns.color_palette("colorblind").as_hex()),
                    verbose=True):
+    """
+    Plots categorical feature vs regression target (as boxplots).
 
+
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    feature: Numpy array or Pandas series
+        Categorical feature (must be of dtype object or str) to plot on y-axis.
+    target: Numpy array or Pandas series
+        Regression target to plot on x-axis.
+    feature_name: str (optional)
+        If specified used as feature's name/label in plot.
+    target_name: str (optional)
+        If specified used as target's name/label in plot.
+    target_lim: 2-tuple of float or int
+        Limits the y-axis on which the target is plotted.
+    min_width: float
+        Minimum width of bars. Per default the feature's member frequency determines the width per member
+        which might end with a "line". 
+        Can be orriden by this paramter and set to a minimum.
+    inset_size: float
+        Relative size of distribution bar plot on y-axis.
+    refline: boolean
+        Print a reference line representing the base rate.
+    title: str
+        Title of plot
+    add_miss_info: boolean
+        Show percentage of missings in feature's axis label.
+    color: list or str
+        Color used for bars. If list provided the second item is used.
+    verbose: Boolean
+        Print processing information.
+
+    Returns
+    -------
+    Nothing
+    """
     # Adapt feature and target
     feature, target, pct_miss_feature = _helper_adapt_feature_target(feature, target, feature_name, target_name,
                                                                      verbose=verbose)
@@ -828,7 +920,42 @@ def plot_nume_CLASS(ax,
                     rasterized_boxplot=False,
                     color=list(sns.color_palette("colorblind").as_hex()),
                     verbose=True):
+    """
+    Plots numerical feature vs classfication target (as overlayed histogram with kernel density).
 
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    feature: Numpy array or Pandas series
+        Numerical feature (must be of dtype float) to plot on y-axis.
+    target: Numpy array or Pandas series
+        Classifiction target to plot on x-axis.
+    feature_name: str (optional)
+        If specified used as feature's name/label in plot.
+    target_name: str (optional)
+        If specified used as target's name/label in plot.
+    feature_lim: 2-tuple of float or int
+        Limits the x-axis on which the feature is plotted.
+    inset_size: float
+        Relative size of distribution bar plot on y-axis.
+    n_bins: int
+        Number of histogram bins.
+    title: str
+        Title of plot
+    add_miss_info: boolean
+        Show percentage of missings in feature's axis label.
+    rasterized_boxplot: boolean
+        Should inner boxplot be rasterized. Decreases time to render plot especially for pdf.
+    color: list or str
+        Color used for different target categories.
+    verbose: Boolean
+        Print processing information.
+
+    Returns
+    -------
+    Nothing
+    """
     # Adapt feature and target
     feature, target, pct_miss_feature = _helper_adapt_feature_target(feature, target, feature_name, target_name,
                                                                      verbose=verbose)
@@ -879,7 +1006,43 @@ def plot_nume_MULTICLASS(ax,
                          rasterized_boxplot=False,
                          color=list(sns.color_palette("colorblind").as_hex()),
                          verbose=True):
+    """
+    Plots numerical feature vs multiclass target (as overlayed histogram with kernel density). 
+    Directly calls plot_nume_CLASS with same parameter. So it is just a dummy wrapper to have consistent naming.
 
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    feature: Numpy array or Pandas series
+        Numerical feature to plot on y-axis.
+    target: Numpy array or Pandas series
+        Classifiction target to plot on x-axis.
+    feature_name: str (optional)
+        If specified used as feature's name/label in plot.
+    target_name: str (optional)
+        If specified used as target's name/label in plot.
+    feature_lim: 2-tuple of float or int
+        Limits the x-axis on which the feature is plotted.
+    inset_size: float
+        Relative size of distribution bar plot on y-axis.
+    n_bins: int
+        Number of histogram bins.
+    title: str
+        Title of plot
+    add_miss_info: boolean
+        Show percentage of missings in feature's axis label.
+    rasterized_boxplot: boolean
+        Should inner boxplot be rasterized. Decreases time to render plot especially for pdf.
+    color: list or str
+        Color used for different target categories.
+    verbose: Boolean
+        Print processing information.
+
+    Returns
+    -------
+    Nothing
+    """
     plot_nume_CLASS(ax=ax, feature=feature, target=target,
                     feature_name=feature_name, target_name=target_name,
                     feature_lim=feature_lim,
@@ -904,7 +1067,66 @@ def plot_nume_REGR(ax,
                    add_boxplot=True, rasterized_boxplot=False,
                    colormap=LinearSegmentedColormap.from_list("bl_yl_rd", ["blue", "yellow", "red"]),
                    verbose=True):
+    """
+    Plots numerical feature vs regression target (as "heated" scatter plot).
 
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    feature: Numpy array or Pandas series
+        Numerical feature to plot on x-axis.
+    target: Numpy array or Pandas series
+        Regression target to plot on y-axis.
+    feature_name: str (optional)
+        If specified used as feature's name/label in plot.
+    target_name: str (optional)
+        If specified used as target's name/label in plot.
+    feature_lim: 2-tuple of float or int
+        Limits the x-axis on which the feature is plotted.
+    target_lim: 2-tuple of float or int
+        Limits the y-axis on which the target is plotted.
+    regplot: boolean
+        Should a regression line fitted to the scatter.
+    regplot_type: str
+        "lowess": Fit a non-linear (statsmodels) lowess (locally weighted scatterplot smoothing) line.
+        "linear": Fit a linear regression line.
+        "spline": Fit a nonlinear cubic B-spline.
+    lowess_n_sample: int
+        Sample data to this size before fitting lowess
+    lowess_frac: float
+        Between 0 and 1. "frac" parameter of statmodels lowess function.
+    spline_smooth: float
+        Smoothing factor of B-spline.
+    refline: boolean
+        Print a reference line representing the mean target value.
+    title: str
+        Title of plot.
+    add_miss_info: boolean
+        Show percentage of missings in feature's axis label.
+    add_colorbar: boolean
+        Show colorbar for heated dots?        
+    inset_size: float
+        Relative size of distribution bar plot on y-axis.
+    add_feature_distribution: boolean
+        Plot feature's distribution as inner histogram.
+    add_target_distribution: boolean
+        Plot target's distribution as inner histogram.
+    n_bins: int
+        Number of histogram bins in inner histogram plots.
+    add_boxplot: boolean
+        Show boxplot in below inner historgrams?
+    rasterized_boxplot: boolean
+        Should inner boxplot be rasterized. Decreases time to render plot especially for pdf.
+    colormap: colormap
+        Colormap used by hexbin plot.
+    verbose: Boolean
+        Print processing information.
+
+    Returns
+    -------
+    Nothing
+    """
     # Adapt feature and target
     feature, target, pct_miss_feature = _helper_adapt_feature_target(feature, target, feature_name, target_name,
                                                                      verbose=verbose)
@@ -1121,30 +1343,34 @@ def plot_feature_target(ax,
                         feature, target,
                         feature_type=None, target_type=None,
                         feature_name=None, target_name=None,
-                        target_category=None,
                         **kwargs):
     """
-    feature_lim=feature_lim, target_lim=target_lim,
-                  min_width=min_width, inset_size=inset_size, refline=refline, n_bins=n_bins,
-                  regplot=regplot, regplot_type=regplot_type,
-                  lowess_n_sample=lowess_n_sample, lowess_frac=lowess_frac, spline_smooth=spline_smooth, 
-                  add_colorbar=add_colorbar,
-                  add_feature_distribution=add_feature_distribution, add_target_distribution=add_target_distribution,
-                  add_boxplot=add_boxplot, rasterized_boxplot=rasterized_boxplot,
-                  title=title,
-                  add_miss_info=add_miss_info,
-                  color=color,
-                  colormap=colormap
-
-                    feature_lim=None, target_lim=None,
-                min_width=0.2, inset_size=0.2, refline=True, n_bins=20,
-                regplot=True, regplot_type="lowess", lowess_n_sample=1000, lowess_frac=2 / 3, spline_smooth=1, 
-                add_colorbar=True,
-                add_feature_distribution=True, add_target_distribution=True, add_boxplot=True, rasterized_boxplot=True,
-                title=None,
-                add_miss_info=True,
-                color=list(sns.color_palette("colorblind").as_hex()),
-                colormap=LinearSegmentedColormap.from_list("bl_yl_rd", ["blue", "yellow", "red"])
+    Wrapper which calls feature-target-combination's corresponding plot_nume/cate_CLASS/MULTICLASS/REGR plots
+    
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    feature: Numpy array or Pandas series
+        Feature to plot.
+    target: Numpy array or Pandas series
+        Target to plot.
+    feature_type: str
+        Can be "nume" or "cate". If not specified the type is detected automatically. 
+        So this automatism can be overridden.
+    target_type: str
+        Can be "CLASS" or "MULTICLASS" or "REGR". If not specified the type is detected automatically. 
+        So this automatism can be overridden.
+    feature_name: str (optional)
+        If specified used as feature's name/label in plot.
+    target_name: str (optional)
+        If specified used as target's name/label in plot.
+    **kwargs: dict
+        All other possible arguments of plot_nume/cate_CLASS/MULTICLASS/REGR functions.
+ 
+    Returns
+    -------
+    Nothing
     """
     # Determine feature and target type
     if feature_type is None:
@@ -1156,7 +1382,6 @@ def plot_feature_target(ax,
     # Call plot functions
     params_shared = dict(ax=ax, feature=feature, target=target,
                          feature_name=feature_name, target_name=target_name)
-
     if feature_type == "nume":
         if target_type == "CLASS":
             plot_nume_CLASS(**params_shared, **kwargs_reduce(kwargs, plot_nume_CLASS))
@@ -1166,7 +1391,6 @@ def plot_feature_target(ax,
             plot_nume_REGR(**params_shared, **kwargs_reduce(kwargs, plot_nume_REGR))
         else:
             raise Exception('Wrong TARGET_TYPE')
-
     else:
         if target_type == "CLASS":
             plot_cate_CLASS(**params_shared, **kwargs_reduce(kwargs, plot_nume_CLASS))
@@ -1176,7 +1400,6 @@ def plot_feature_target(ax,
             plot_cate_REGR(**params_shared, **kwargs_reduce(kwargs, plot_cate_REGR))
         else:
             raise Exception('Wrong TARGET_TYPE')
-
     # Create Frame
     # for spine in ax.spines.values():
     #    spine.set_edgecolor('black')
@@ -1184,6 +1407,28 @@ def plot_feature_target(ax,
 
 # Plot correlation
 def plot_corr(ax, df, method, absolute=True, cutoff=None, n_jobs=1):
+    """
+    Correlation plot calculating pairwise correlation of all columns of "df" parameter
+
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    df: Pandas dataframe
+        Dataframe comprising of all features for which all pairwise correlations are calculated.
+    method: str
+        Can be "pearson" or "spearman" for numerical features and "cramersv" for categorical features.
+    absolute: boolean
+        Should the correlation values be transformed to their absolue value?
+    cutoff: float   
+        Plots only features with at least one (absolute) correlation value above cutoff.
+    n_jobs: int
+        Number of parallel processes used during of categorical correlation calculation.
+
+    Returns
+    -------
+    Dataframe with correlation values.
+    """
 
     # Check for mixed types
     count_numeric_dtypes = df.apply(lambda x: pd.api.types.is_numeric_dtype(x)).sum()
@@ -1835,7 +2080,7 @@ def shap2pd(shap_values, features,
         if pd.api.types.is_numeric_dtype(df_ref[feature]):
             kbinsdiscretizer_fit = KBinsDiscretizer(n_bins=n_bins, encode="ordinal").fit(df_ref[[feature]])
             bin_edges = kbinsdiscretizer_fit.bin_edges_
-            bin_labels = np.array(["q" + format(i+1, "02d") + " (" + 
+            bin_labels = np.array(["q" + format(i + 1, "02d") + " (" + 
                                    format(bin_edges[0][i], format_string) + " - " +
                                    format(bin_edges[0][i + 1], format_string) + ")"
                                    for i in range(len(bin_edges[0]) - 1)])
