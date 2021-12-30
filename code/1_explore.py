@@ -36,7 +36,7 @@ plt.ioff()
 # plt.ioff() | plt.ion()  # stop/start standard window
 # plt.plot(range(10), range(10))
 
-# Specific parameters
+# Constants
 TARGET_TYPES = ["REGR", "CLASS", "MULTICLASS"]
 MISSPCT_THRESHOLD = 0.95
 VARPERF_THRESHOLD_DATADRIFT = 0.53

@@ -101,7 +101,7 @@ def interleave(a, b):
     return [x for tup in zip(a, b) for x in tup]
 
 
-'''
+
 def logit(p: float) -> float:
     return(np.log(p / (1 - p)))
 
@@ -116,7 +116,7 @@ def show_figure(fig):
     new_manager = dummy.canvas.manager
     new_manager.canvas.figure = fig
     fig.set_canvas(new_manager.canvas)
-'''
+
 
 
 # Plot list of tuples (plot_call, kwargs)
@@ -1687,6 +1687,9 @@ class UndersampleEstimator(BaseEstimator):
             self.b_sample_ = df_tmp["y"].value_counts().values / len(df_tmp)
         y_under = df_tmp["y"].values
         X_under = X[df_tmp["index"].values, :]
+        
+        # Denote that it is fitted
+        self.fitted_ = True
 
         # Fit
         self.subestimator.fit(X_under, y_under, *args, **kwargs)
@@ -1832,8 +1835,9 @@ def shap2pd(shap_values, features,
         if pd.api.types.is_numeric_dtype(df_ref[feature]):
             kbinsdiscretizer_fit = KBinsDiscretizer(n_bins=n_bins, encode="ordinal").fit(df_ref[[feature]])
             bin_edges = kbinsdiscretizer_fit.bin_edges_
-            bin_labels = np.array([format(bin_edges[0][i], format_string) + " - " +
-                                   format(bin_edges[0][i + 1], format_string)
+            bin_labels = np.array(["q" + format(i+1, "02d") + " (" + 
+                                   format(bin_edges[0][i], format_string) + " - " +
+                                   format(bin_edges[0][i + 1], format_string) + ")"
                                    for i in range(len(bin_edges[0]) - 1)])
             df_shap = pd.DataFrame({"value": bin_labels[(kbinsdiscretizer_fit
                                                          .transform(shap_values.data[:, [i_feature]])[:, 0])
@@ -1843,7 +1847,7 @@ def shap2pd(shap_values, features,
         # Categorical feature
         else:
             df_shap = pd.DataFrame({"value": shap_values.data[:, i_feature],
-                                    "yhat": shap_values.values[:, i_feature]})
+                                    "yhat": shap_values.values[:, i_feature]})  # TODO: MULTICLASS
 
         # Aggregate and add intercept
         df_shap_agg = (df_shap.groupby("value").mean().reset_index()
@@ -2265,7 +2269,7 @@ def get_plotcalls_model_performance(y, yhat, target_type=None,
 # Plot permutation base variable importance
 def plot_variable_importance(ax,
                              features, importance,
-                             importance_cum=None, importance_mean=None, importance_se=None, max_score_diff=None,
+                             importance_cum=None, importance_mean=None, importance_error=None, max_score_diff=None,
                              category=None,
                              category_label="Importance",
                              category_color_palette=sns.xkcd_palette(["blue", "orange", "red"]),
@@ -2280,16 +2284,18 @@ def plot_variable_importance(ax,
     if importance_cum is not None:
         ax.plot(importance_cum, features, color="black", marker="o")
         ax.set_xlabel(ax.get_xlabel() + " /\n" + r"cumulative in % (-$\bullet$-)")
-    if importance_se is not None:
-        ax.errorbar(x=importance_mean if importance_mean is not None else importance, y=features, xerr=importance_se,
+    if importance_error is not None:
+        ax.errorbar(x=importance_mean if importance_mean is not None else importance, 
+                    y=features, 
+                    xerr=importance_error,
                     linestyle="none", marker="s", fillstyle="none", color=color_error)
-        ax.set_title(ax.get_title() + r" (incl. SE (-$\boxminus$-))")
+        ax.set_title(ax.get_title() + r" (incl. error (-$\boxminus$-))")
 
     '''
     if column_score_diff is not None:
         ax2 = ax.twiny()
         ax2.errorbar(x=df_varimp[column_score_diff], y=df_varimp[column_feature],
-                     xerr=df_varimp[column_score_diff_se]*5,
+                     xerr=df_varimp[column_score_diff_error]*5,
                     fmt=".", marker="s", fillstyle="none", color="grey")
         ax2.grid(False)
     '''
@@ -2368,7 +2374,10 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
             ax.axvline(refline, linestyle="dotted", color="black")  # priori line
 
         # Inner barplot
-        _helper_inner_barplot(ax, x=df_plot[feature_name + "_fmt"], y=df_plot["pct"], inset_size=0.2)
+        if feature_ref is not None:
+            _helper_inner_barplot(ax, 
+                                  x=df_plot[feature_name + "_fmt"],
+                                  y=df_plot["pct"], inset_size=0.2)
 
         # Axis style
         ax.set_title(feature_name)

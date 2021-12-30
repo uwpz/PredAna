@@ -65,7 +65,8 @@ if TARGET_TYPE == "REGR":
     df_tmp = df.query("fold == 'train'").sample(n=2000, frac=None).reset_index(drop=True)
 else:
     df.query("fold == 'train'")[target_name].value_counts()
-    df_tmp, b_sample, b_all = up.undersample(df.query("fold == 'train'"), target=target_name,
+    df_tmp, b_sample, b_all = up.undersample(df=df.query("fold == 'train'"), 
+                                             target=target_name,
                                              n_max_per_level=2000)
     print(b_sample, b_all)  # base rates
 df_tune = (pd.concat([df_tmp, df.query("fold == 'test'")], sort=False)  # take whole test data
