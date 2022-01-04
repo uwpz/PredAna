@@ -67,7 +67,7 @@ df_orig = (pd.read_csv(s.DATALOC + "hour.csv", parse_dates=["dteday"])
 
 # Create some artifacts helping to illustrate important concepts
 df_orig["high_card"] = df_orig["hum"].astype(str)  # high cardinality categorical variable
-df_orig["weathersit"] = df_orig["weathersit"].where(df_orig["weathersit"] != "heavy rain", np.nan)  # some missings
+df_orig["weathersit"] = df_orig["weathersit"].where(df_orig["weathersit"] != "4_heavy rain", np.nan)  # some missings
 df_orig["holiday"] = np.where(np.random.choice(range(10), len(df_orig)) == 0, np.nan, df_orig["holiday"])
 df_orig["windspeed"] = df_orig["windspeed"].where(df_orig["windspeed"] != 0, other=np.nan)  # some missings
 
@@ -281,7 +281,7 @@ df[cate].describe()
 # ATTENTION: Usually this processing needs special adaption depending on the data
 ordi = ["hr", "day_of_month", "mnth", "yr"]
 df[up.add(ordi, "_ENCODED")] = df[ordi].apply(lambda x: pd.to_numeric(x))
-yesno = ["holiday", "workingday"] + ["MISS_" + x for x in miss]  # binary features
+yesno = ["workingday"] + ["MISS_" + x for x in miss]  # binary features
 df[up.add(yesno, "_ENCODED")] = df[yesno].apply(lambda x: x.map({"No": 0, "Yes": 1}))
 
 # Create target-encoded features for nominal variables
