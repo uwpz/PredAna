@@ -29,7 +29,7 @@ import settings as s
 # --- Parameter --------------------------------------------------------------------------------------------------------
 
 # Plot
-PLOT = True
+PLOT = False
 %matplotlib
 plt.ioff() 
 # %matplotlib | %matplotlib qt | %matplotlib inline  # activate standard/inline window
@@ -66,8 +66,9 @@ df_orig = (pd.read_csv(s.DATALOC + "hour.csv", parse_dates=["dteday"])
            .assign(kaggle_fold=lambda x: np.where(x["dteday"].dt.day >= 20, "test", "train")))
 
 # Create some artifacts helping to illustrate important concepts
-df_orig["high_card"] = df_orig["hum"].astype('str')  # high cardinality categorical variable
+df_orig["high_card"] = df_orig["hum"].astype(str)  # high cardinality categorical variable
 df_orig["weathersit"] = df_orig["weathersit"].where(df_orig["weathersit"] != "heavy rain", np.nan)  # some missings
+df_orig["holiday"] = np.where(np.random.choice(range(10), len(df_orig)) == 0, np.nan, df_orig["holiday"])
 df_orig["windspeed"] = df_orig["windspeed"].where(df_orig["windspeed"] != 0, other=np.nan)  # some missings
 
 # Create artificial targets
@@ -92,6 +93,7 @@ up.plot_feature_target(ax, df_orig["windspeed"], df_orig["cnt_CLASS"])
 '''
 
 # "Save" original data
+df_orig.to_csv(s.DATALOC + "df_orig.csv", index=False)  # save as "original" for productive train&score example
 df = df_orig.copy()
 
 
@@ -129,7 +131,7 @@ df["fold"] = np.where(df.index.isin(df.query("kaggle_fold == 'train'")
 
 # --- Define numeric features ------------------------------------------------------------------------------------------
 
-nume = df_meta_sub.loc[df_meta_sub["type"] == "nume", "variable"].values.tolist()
+nume = df_meta_sub.query("type == 'nume'")["variable"].values.tolist()
 df[nume] = df[nume].apply(lambda x: pd.to_numeric(x))
 df[nume].describe()
 
@@ -264,7 +266,7 @@ df[miss].isnull().sum()
 
 # --- Define categorical features --------------------------------------------------------------------------------------
 
-cate = df_meta_sub.loc[df_meta_sub.type.isin(["cate"]), "variable"].values.tolist()
+cate = df_meta_sub.query("type == 'cate'")["variable"].values.tolist()
 df[cate] = df[cate].astype("str")
 df[cate].describe()
 
@@ -277,7 +279,7 @@ df[cate].describe()
 
 # Create ordinal and binary-encoded features
 # ATTENTION: Usually this processing needs special adaption depending on the data
-ordi = ["hr", "mnth", "yr"]
+ordi = ["hr", "day_of_month", "mnth", "yr"]
 df[up.add(ordi, "_ENCODED")] = df[ordi].apply(lambda x: pd.to_numeric(x))
 yesno = ["holiday", "workingday"] + ["MISS_" + x for x in miss]  # binary features
 df[up.add(yesno, "_ENCODED")] = df[yesno].apply(lambda x: x.map({"No": 0, "Yes": 1}))

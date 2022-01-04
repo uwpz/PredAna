@@ -827,7 +827,6 @@ def plot_cate_REGR(ax,
     """
     Plots categorical feature vs regression target (as boxplots).
 
-
     Parameters
     ----------
     ax: matplotlib ax
