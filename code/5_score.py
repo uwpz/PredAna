@@ -7,24 +7,10 @@
 # General
 import numpy as np
 import pandas as pd
+import dill
 
-import pickle
-import time
-from importlib import reload
-
-# Special
-'''
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-from category_encoders import target_encoder
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, MinMaxScaler
-from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.preprocessing import OrdinalEncoder
-import xgboost as xgb
-'''
 # Custom functions and classes
-#import utils_plots as up
+import utils_plots as up
 
 # Settings
 import settings as s
@@ -49,6 +35,6 @@ df = (pd.read_csv(s.DATALOC + "df_orig.csv", parse_dates=["dteday"],
 # --- Score  -----------------------------------------------------------------------------------------------------------
 
 with open(s.DATALOC + "4_train.pkl", "rb") as file:
-    pipeline = pickle.load(file)["pipeline"]
+    pipeline = dill.load(file)["pipeline"]
 score = pipeline.predict_proba(df)
 print(score)

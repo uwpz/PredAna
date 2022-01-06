@@ -250,3 +250,21 @@ class ColumnSelector(BaseEstimator, TransformerMixin):
 
     def get_params(self, deep=True):
         return {"columns": self._columns}
+
+
+class DfOrdinlEncoder(OrdinalEncoder):
+    def fit(self, X, y=None):
+        self.names_ = X.columns.values
+        super().fit(X, y)
+        return self
+
+    def transform(self, X):
+        df = pd.DataFrame(super().transform(X), columns=self.names_)
+        return df
+
+    def fit_transform(self, X, y=None, **fit_params):
+        self.names_ = X.columns.values
+        df = pd.DataFrame(super().fit_transform(X, y, **fit_params), columns=self.names_)
+        return df
+
+DfOrdinlEncoder().fit_transform(df[ordi[1:]])
