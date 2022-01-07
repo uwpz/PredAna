@@ -41,13 +41,14 @@ df = pd.read_csv(s.DATALOC + "df_orig.csv", parse_dates=["dteday"],
                  dtype={**{x: np.float64 for x in nume}, **{x: object for x in cate}})
 
 # Define target
-df["target"] = df["cnt_CLASS"].str.slice(0, 1).astype("int")
+#df["target"] = df["cnt_CLASS"].str.slice(0, 1).astype("int")
+df["target"] = df["cnt_REGR"]
 
 # Split in train and util
 df["fold"] = np.where(df.index.isin(df.query("kaggle_fold == 'train'")
                                     .sample(frac=0.1, random_state=42).index.values),
                       "util", df["kaggle_fold"])
-df_train = df.query("fold != 'util'").reset_index(drop=True)
+df_train = df.query("fold == 'train'").reset_index(drop=True)
 df_util = df.query("fold == 'util'").reset_index(drop=True)
 
 
@@ -153,7 +154,7 @@ pipe_numerical = Pipeline(steps=[
         ("log_trafo", FunctionTransformer(func=lambda x: np.log(x + 1)), 
          ["hum"]),  
         ("ordinal_encoding", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1), 
-         ordi + yesno)
+         yesno)  # add ordi (and move to pipe_numerical below)?
         #("target_encoding", target_encoding.TargetEncoder()), up.add(toomany, "_ENCODED"))
     ], remainder="passthrough")),
     ("impute", SimpleImputer(strategy="median"))  # might add additional winsorizing or scaling in case of elasticnet
@@ -172,10 +173,10 @@ pipe_categorical = Pipeline(steps=[
 pipeline = Pipeline([
     ('etl', pipe_etl),
     ('fe', ColumnTransformer(transformers=[
-        ('nume', pipe_numerical, nume + ordi + yesno + up.add(toomany, "_ENCODED")),
-        ('cate', pipe_categorical, nomi)
+        ('nume', pipe_numerical, nume + yesno + up.add(toomany, "_ENCODED")),
+        ('cate', pipe_categorical, nomi + ordi)  
     ])),
-    ('algo', up.UndersampleEstimator(xgb.XGBClassifier(**dict(n_estimators=1100, learning_rate=0.01,
+    ('algo', up.UndersampleEstimator(xgb.XGBRegressor(**dict(n_estimators=1100, learning_rate=0.01,
                                                               max_depth=3, min_child_weight=10,
                                                               colsample_bytree=0.7, subsample=0.7,
                                                               gamma=0,

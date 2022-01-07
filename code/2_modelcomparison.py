@@ -183,7 +183,7 @@ fig.savefig(f"{s.PLOTLOC}2__tune_rforest__{TARGET_TYPE}.pdf")
 start = time.time()
 fit = (up.GridSearchCV_xlgb(xgb.XGBRegressor(verbosity=0) if TARGET_TYPE == "REGR" else
                             xgb.XGBClassifier(verbosity=0),
-                            {"n_estimators": [x for x in range(100, 500, 100)], "learning_rate": [0.01],
+                            {"n_estimators": [x for x in range(100, 1100, 100)], "learning_rate": [0.01],
                             "max_depth": [3, 6], "min_child_weight": [5, 10]},
                             cv=cv_index.split(df_tune),
                             refit=False,
