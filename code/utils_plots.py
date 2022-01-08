@@ -1502,20 +1502,53 @@ def plot_corr(ax, df, method, absolute=True, cutoff=None, n_jobs=1):
 # --- Non-plots ---------------------------------------------------------------------------------------
 
 # Undersample
-def undersample(df, target, n_max_per_level, random_state=42):
-    b_all = df[target].value_counts().values / len(df)
+def undersample(df, target, n_max_per_level, random_state=42) -> tuple:
+    """
+    Undersampling dataframe with classficiation target.
+
+    Parameters
+    ----------
+    df: Pandas dataframe
+        Dataframe which should be undersampled.
+    target: str
+        Name of classification target which is the basis for undersampling.
+    n_max_per_level: int
+        Maximal number of obs per target category which should be returned in undersampled dataframe.
+    random_state: int   
+        Seed.
+
+    Returns
+    -------
+    Tuple (df_under, b_sample, b_all) comprising undersampled dataframe, new undersampled base rates (tuple), 
+    original base rates (tuple).
+    """
+    b_all = df[target].value_counts().sort_index().values / len(df)
     df_under = (df.groupby(target).apply(lambda x: x.sample(min(n_max_per_level, x.shape[0]),
                                                             random_state=random_state))
                 .sample(frac=1)  # shuffle
                 .reset_index(drop=True))
-    b_sample = df_under[target].value_counts().values / len(df_under)
+    b_sample = df_under[target].value_counts().sort_index().values / len(df_under)
     return df_under, b_sample, b_all
 
 
-# Kfold cross validation with strict separation between (prespecified) train and test-data
 class KFoldSep(KFold):
-    def __init__(self, shuffle, *args, **kwargs):
-        super().__init__(shuffle=True, *args, **kwargs)
+    """
+    KFold cross-validator strictly separating test-folds from all train-folds, i.e. test-folds never overlap with
+    any train-fold. 
+    Inherits from default KFold class and only additionally provides "test_fold" parameter (boolean mask), 
+    which defines test-fold. Basically works by creating default KFold splits with subsequently removing 
+    non-conform indexes from train and test-folds. 
+
+    Parameters
+    ----------
+    Same as for KFold
+    
+    Attributes
+    ----------
+    Same as for KFold
+    """
+    def __init__(self, shuffle=True, *args, **kwargs):
+        super().__init__(shuffle=shuffle, *args, **kwargs)
 
     def split(self, X, y=None, groups=None, test_fold=None):
         i_test_fold = np.arange(len(X))[test_fold]
@@ -1523,14 +1556,24 @@ class KFoldSep(KFold):
             yield i_train[~np.isin(i_train, i_test_fold)], i_test[np.isin(i_test, i_test_fold)]
 
 
-# Splitter: test==train fold, i.e. in-sample selection, needed for quick change of cross-validation code to non-cv
 class InSampleSplit:
+    """
+    Dummy cross-validator with test==train fold, i.e. in-sample selection, which can be used for quick change of 
+    cross-validation code to non-cv.
+    
+    Parameters
+    ----------
+    shuffle: Boolean
+        Shuffle data?
+    random_state: int
+        Seed.    
+    """
     def __init__(self, shuffle=True, random_state=42):
         self.shuffle = shuffle
         self.random_state = random_state
 
     def split(self, X, *args, **kwargs):
-        i_df = np.arange(X.shape[0])
+        i_df = np.arange(len(X))
         if self.shuffle:
             np.random.seed(self.random_state)
             np.random.shuffle(i_df)

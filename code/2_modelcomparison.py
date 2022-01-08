@@ -37,7 +37,7 @@ import settings as s
 
 # --- Parameter --------------------------------------------------------------------------------------------------------
 
-TARGET_TYPE = "MULTICLASS"
+TARGET_TYPE = "CLASS"
 #for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
 # Main parameter
