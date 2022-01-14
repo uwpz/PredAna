@@ -26,11 +26,12 @@ import utils_plots as up
 import settings as s
 
 
+
 # --- Parameter --------------------------------------------------------------------------------------------------------
 
 # Plot
 PLOT = True
-%matplotlib
+%matplotlib 
 plt.ioff() 
 # %matplotlib | %matplotlib qt | %matplotlib inline  # activate standard/inline window
 # plt.ioff() | plt.ion()  # stop/start standard window
@@ -53,7 +54,7 @@ TOOMANY_THRESHOLD = 5
 # Read data and adapt to be more readable
 df_orig = (pd.read_csv(s.DATALOC + "hour.csv", parse_dates=["dteday"])
            .replace({"season": {1: "1_winter", 2: "2_spring", 3: "3_summer", 4: "4_fall"},
-                     "yr": {0: "2011", 1: "2012"},
+                        "yr": {0: "2011", 1: "2012"},
                      "holiday": {0: "No", 1: "Yes"},
                      "workingday": {0: "No", 1: "Yes"},
                      "weathersit": {1: "1_clear", 2: "2_misty", 3: "3_light rain", 4: "4_heavy rain"}})

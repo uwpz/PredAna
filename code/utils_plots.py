@@ -53,6 +53,7 @@ def debugtest(a=1, b=2):
     # print("blub3")
     print(a)
     print(b)
+    print("kasgholiahg")
     return "done"
 
 
@@ -114,10 +115,10 @@ def inv_logit(p):
 
 def show_figure(fig):
     """ Creates a dummy figure and uses its manager to display closed 'fig' """
-    dummy = plt.figure()
-    new_manager = dummy.canvas.manager
-    new_manager.canvas.figure = fig
-    fig.set_canvas(new_manager.canvas)
+        dummy = plt.figure()
+        new_manager = dummy.canvas.manager
+        new_manager.canvas.figure = fig
+        fig.set_canvas(new_manager.canvas)
 
 
 # Plot list of tuples (plot_call, kwargs)
