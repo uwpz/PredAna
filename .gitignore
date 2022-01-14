@@ -1,5 +1,6 @@
 /.vscode
 *.lnk
+*.ini
 *.bat
 *.pkl
 code/__pycache__

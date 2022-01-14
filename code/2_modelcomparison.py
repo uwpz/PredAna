@@ -37,7 +37,7 @@ import settings as s
 
 # --- Parameter --------------------------------------------------------------------------------------------------------
 
-TARGET_TYPE = "CLASS"
+TARGET_TYPE = "MULTICLASS"
 #for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
 # Main parameter
@@ -379,7 +379,7 @@ df_modelcomp_result = df_modelcomp_result.append(pd.DataFrame.from_dict(cvresult
 
 fig, ax = plt.subplots(1, 1, figsize=(6, 6))
 up.plot_modelcomp(ax, df_modelcomp_result.rename(columns={"index": "run", "test_" + metric: metric}),
-                  scorevar=metric)
+                  score_var=metric)
 fig.savefig(f"{s.PLOTLOC}2__model_comparison__{TARGET_TYPE}.pdf")
 
 

@@ -35,7 +35,7 @@ import settings as s
 # --- Parameter --------------------------------------------------------------------------------------------------------
 
 # Constants
-TARGET_TYPE = "CLASS"
+TARGET_TYPE = "MULTICLASS"
 #for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 ID_NAME = "instant"
 IMPORTANCE_CUM_THRESHOLD = 98
@@ -47,7 +47,7 @@ metric = "spear" if TARGET_TYPE == "REGR" else "auc"
 scoring = up.D_SCORER[TARGET_TYPE]
 
 # Plot
-PLOT = False
+PLOT = True
 %matplotlib
 plt.ioff() 
 # %matplotlib | %matplotlib qt | %matplotlib inline  # activate standard/inline window
@@ -173,7 +173,7 @@ print(d_cv["test_" + metric], " \n", np.mean(d_cv["test_" + metric]), np.std(d_c
 # Variable importance (on train data!)
 df_varimp_train = up.variable_importance(model, df_train[features], df_train[target_name], 
                                          features=features,
-                                         scoring=scoring[metric],
+                                         scorer=scoring[metric],
                                          random_state=42, n_jobs=s.N_JOBS)
 # Scikit's VI: permuatation_importance("same parameter but remove features argument and add n_repeats=1")
 
@@ -253,7 +253,7 @@ xgb.plot_importance(model[1].subestimator if hasattr(model[1], "subestimator") e
 # Importance (on test data!)
 df_varimp_test = up.variable_importance(model, df_test[features], df_test[target_name], 
                                         features=features,
-                                        scoring=scoring[metric],
+                                        scorer=scoring[metric],
                                         random_state=42, n_jobs=s.N_JOBS)
 features_top_test = df_varimp_test.loc[df_varimp_test["importance_cum"] < IMPORTANCE_CUM_THRESHOLD, "feature"].values
 
@@ -271,7 +271,7 @@ for i, (i_train, i_test) in enumerate(cv_5foldsep.split(df_traintest, test_fold=
     df_varimp_test_cv = df_varimp_test_cv.append(
         up.variable_importance(d_cv["estimator"][i], df_test_cv[features], df_test_cv[target_name],
                                features=features_top_test,
-                               scoring=scoring[metric],
+                               scorer=scoring[metric],
                                random_state=42, n_jobs=s.N_JOBS).assign(run=i))
 df_varimp_test_err = (df_varimp_test_cv.groupby("feature")["score_diff", "importance"].agg("std")
                      .pipe(lambda x: x.set_axis([col + "_error" for col in x.columns], axis=1, inplace=False))

@@ -42,17 +42,18 @@ from statsmodels.nonparametric.smoothers_lowess import lowess
 # General Functions
 ########################################################################################################################
 
-# --- General ----------------------------------------------------------------------------------------
+# --- General ----------------------------------------------------------------------------------------------------------
 
-""" 
+
 def debugtest(a=1, b=2):
     print(a)
     print(b)
     print("blub")
     # print("blub2")
     # print("blub3")
+    print(a)
+    print(b)
     return "done"
-"""
 
 
 def tmp(a: pd.DataFrame) -> list:
@@ -101,13 +102,14 @@ def interleave(a, b):
     return [x for tup in zip(a, b) for x in tup]
 
 
-
+'''
 def logit(p: float) -> float:
     return(np.log(p / (1 - p)))
 
 
 def inv_logit(p):
     return np.exp(p) / (1 + np.exp(p))
+'''
 
 
 def show_figure(fig):
@@ -179,7 +181,7 @@ def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None, c
     return l_pages
 
 
-# --- Metrics for sklearn scorer -----------------------------------------------------------------------------
+# --- Metrics for sklearn scorer ---------------------------------------------------------------------------------------
 
 # Regr
 
@@ -278,9 +280,9 @@ D_SCORER = {"REGR": {"spear": make_scorer(spear, greater_is_better=True),
 
 ########################################################################################################################
 # Explore
-#######################################################################################################################
+########################################################################################################################
 
-# --- Non-plots --------------------------------------------------------------------------
+# --- Non-plots --------------------------------------------------------------------------------------------------------
 
 # Overview of values
 def value_counts(df, topn=5, dtypes=None):
@@ -499,7 +501,7 @@ class ImputeMode(BaseEstimator, TransformerMixin):
         return X
 
 
-# --- Plots --------------------------------------------------------------------------
+# --- Plots ------------------------------------------------------------------------------------------------------------
 
 def _helper_calc_barboxwidth(feature, target, min_width=0.2):
     """ 
@@ -1497,9 +1499,9 @@ def plot_corr(ax, df, method, absolute=True, cutoff=None, n_jobs=1):
 
 ########################################################################################################################
 # Model Comparison
-#######################################################################################################################
+########################################################################################################################
 
-# --- Non-plots ---------------------------------------------------------------------------------------
+# --- Non-plots --------------------------------------------------------------------------------------------------------
 
 # Undersample
 def undersample(df, target, n_max_per_level, random_state=42) -> tuple:
@@ -1535,7 +1537,7 @@ class KFoldSep(KFold):
     """
     KFold cross-validator strictly separating test-folds from all train-folds, i.e. test-folds never overlap with
     any train-fold. 
-    Inherits from default KFold class and only additionally provides "test_fold" parameter (boolean mask), 
+    Inherits from scikit's KFold class and only additionally provides "test_fold" parameter (boolean mask), 
     which defines test-fold. Basically works by creating default KFold splits with subsequently removing 
     non-conform indexes from train and test-folds. 
 
@@ -1547,7 +1549,7 @@ class KFoldSep(KFold):
     ----------
     Same as for KFold
     """
-    def __init__(self, shuffle=True, *args, **kwargs):
+    def __init__(self, *args, shuffle=True, **kwargs):
         super().__init__(shuffle=shuffle, *args, **kwargs)
 
     def split(self, X, y=None, groups=None, test_fold=None):
@@ -1583,8 +1585,20 @@ class InSampleSplit:
         return 1
 
 
-# Column selector: Workaround as scikit's ColumnTransformer currently needs same columns for fit and transform (bug!)
 class ColumnSelector(BaseEstimator, TransformerMixin):
+    """
+    Column selector transformer: Workaround as some scikit's ColumnTransformer versions needs same columns
+    for fit and transform (bug!)
+
+    Parameters
+    ----------
+    columns: list
+        List of columns to seect from dataframe (input to transform)
+
+    Attributes
+    ----------
+    None
+    """
     def __init__(self, columns=None):
         self.columns = columns
 
@@ -1595,10 +1609,21 @@ class ColumnSelector(BaseEstimator, TransformerMixin):
         return df[self.columns]
 
 
-# Incremental n_estimators (warm start) GridSearch for XGBoost and Lightgbm
-# TODO adapt to single scorer shape of scikit
-class GridSearchCV_xlgb(GridSearchCV):
 
+class GridSearchCV_xlgb(GridSearchCV):
+    """
+    GridSearchCV for XGBoost and Lightgbm models using n_estimators as incremental ("warm start") parameter.
+    Inherits from scikit's GridSearchCV class (having same parameters), overwriting only the "fit" method.
+    Current limitation: "scoring" parameter must be a dictionary with metric names as keys and callables a values.
+
+    Parameters
+    ----------
+    Same as for GridSearchCV
+    
+    Attributes
+    ----------
+    Same as for GridSearchCV
+    """
     def fit(self, X, y=None, **fit_params):
         # pdb.set_trace()
 
@@ -1722,13 +1747,46 @@ class GridSearchCV_xlgb(GridSearchCV):
         return self
 
 
-# --- Plots ---------------------------------------------------------------------------------------
+# --- Plots ------------------------------------------------------------------------------------------------------------
 
-# Plot cv results
 def plot_cvresults(cv_results, metric, x_var, color_var=None, style_var=None, column_var=None, row_var=None,
                    show_gap=True, show_std=False, color=list(sns.color_palette("tab10").as_hex()),
                    height=6):
-
+    """
+    Plots results of scikit's cross-validation (i.e. a validation curve). Test performances are plotted as 
+    continous lines, train performances as broken lines. Possible generalization gap lines (train minus 
+    test performance) are plotted as dotted lines.
+    Returns seaborn FacetGrid plot, so no ax can be specified.
+    
+    Parameters
+    ----------
+    cv_results: dict
+        Result from scikit's cross-validation.
+    metric: string
+        Metric to plot. Occurs as "mean_train/test_<metric>" in cv_results.
+    x_var: str
+        Hyperparameter name to plot on x-axis (without the "param_"-prefix of cv_results).
+    color_var: str
+        Hyperparameter name used to group plot by color.
+    style_var: str   
+        Hyperparameter name used to group plot by marker style.
+    column_var: str   
+        Hyperparameter name used to group plot into grid columns.
+    column_var: str   
+        Hyperparameter name used to group plot into grid rows.
+    show_gap: boolean
+        Should the generalization gap be plotted on a second y-axis with a dotted line?
+    show_std: boolean
+        Should standard deviations of the mean performance value (aggregated over the fold runs) be plotted as bands?
+    color: list
+        Colors to use for color_var grouping.
+    height: int
+        Parameter "height" of FacetGrid.        
+ 
+    Returns
+    -------
+    Seaborn FacetGrid plot.
+    """
     # Transform results
     df_cvres = pd.DataFrame.from_dict(cv_results)
     df_cvres.columns = df_cvres.columns.str.replace("param_", "")
@@ -1809,21 +1867,63 @@ def plot_cvresults(cv_results, metric, x_var, color_var=None, style_var=None, co
     return g
 
 
-# Plot model comparison
-def plot_modelcomp(ax, df_modelcomp_result, modelvar="model", runvar="run", scorevar="test_score"):
-    sns.boxplot(data=df_modelcomp_result, x=modelvar, y=scorevar, showmeans=True,
+def plot_modelcomp(ax, df_modelcomp_result, model_var="model", run_var="run", score_var="test_score"):
+    """
+    Plots comparison of model performance collected in a data frame. Basically grouped boxplots overlayed by
+    line plots are created.
+    
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    df_modelcomp_result: Dataframe
+        Data frame comprising model comparison results.
+    model_var: str
+        Data frame column name denoting the model name.
+    run_var: str
+        Data frame column name denoting the (cross validation) run number.
+    score_var: numpy array
+        Data frame column name denoting the performance value of the corresponding model and run.
+
+    Returns
+    -------
+    Nothing.
+    """
+    sns.boxplot(data=df_modelcomp_result, x=model_var, y=score_var, showmeans=True,
                 meanprops={"markerfacecolor": "black", "markeredgecolor": "black"},
                 ax=ax)
-    sns.lineplot(data=df_modelcomp_result, x=modelvar, y=scorevar,
-                 hue=df_modelcomp_result[runvar], linewidth=0.5, linestyle=":",
+    sns.lineplot(data=df_modelcomp_result, x=model_var, y=score_var,
+                 hue=df_modelcomp_result[run_var], linewidth=0.5, linestyle=":",
                  legend=None, ax=ax)
 
 
-# Plot learning curve
 def plot_learningcurve(ax, n_train, score_train, score_test, time_train,
                        add_time=True,
                        color=list(sns.color_palette("tab10").as_hex())):
-
+    """
+    Plots results of scikit's learning_curve function. 
+    
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    n_train: numpy array
+        "train_sizes_abs" return from scikit's learning_curve function.
+    score_train: numpy array
+        "train_scores" return from scikit's learning_curve function.
+    score_test: numpy array
+        "test_scores" return from scikit's learning_curve function.
+    time_train: numpy array
+        "fit_times" return from scikit's learning_curve function.
+    add_time: boolean
+        Plot fitting time on secondary y-axis?
+    color: list
+        Colors to use for train and test lines.      
+ 
+    Returns
+    -------
+    Nothing.
+    """
     score_train_mean = np.mean(score_train, axis=1)
     score_train_std = np.std(score_train, axis=1)
     score_test_mean = np.mean(score_test, axis=1)
@@ -1853,28 +1953,62 @@ def plot_learningcurve(ax, n_train, score_train, score_test, time_train,
 
 ########################################################################################################################
 # Interpret
-#######################################################################################################################
+########################################################################################################################
 
-# --- Non-Plots --------------------------------------------------------------------------
+# --- Non-Plots --------------------------------------------------------------------------------------------------------
 
-# Rescale predictions (e.g. to rewind undersampling)
 def scale_predictions(yhat, b_sample=None, b_all=None):
+    """
+    Rescale predictions of (multiclass) classification model (e.g. to rewind undersampling)
+
+    Parameters
+    ----------
+    yhat: numpy array
+        Predictions to rescale.
+    b_sample: numpy array
+        Base rate of undersampled data.
+    b_all: list or None
+        Base rate of "orignal"" data, i.e. to which the undersampled yhat should be rescaled.
+
+    Returns
+    -------
+    Numpy array with resacaled predictions
+    """
     flag_1dim = False
     if b_sample is None:
-        yhat_rescaled = yhat
+        yhat_rescaled = yhat  # no rescaling case
     else:
         if yhat.ndim == 1:
             flag_1dim = True
-            yhat = np.column_stack((1 - yhat, yhat))
-        tmp = (yhat * b_all) / b_sample
-        yhat_rescaled = tmp / tmp.sum(axis=1, keepdims=True)
+            yhat = np.column_stack((1 - yhat, yhat))  # need 2-dimensional yhat in classfication setting
+        yhat_unnormed = (yhat * b_all) / b_sample  # basic rescaling which also needs norming to be correct
+        yhat_rescaled = yhat_unnormed / yhat_unnormed.sum(axis=1, keepdims=True)  # norming
     if flag_1dim:
         yhat_rescaled = yhat_rescaled[:, 1]
     return yhat_rescaled
 
 
-# Metaestimator which rescales the predictions
 class ScalingEstimator(BaseEstimator):
+    """
+    Metaestimator which rescales predictions (e.g. to rewind undersampling) for any scikit classification estimator.
+
+    Parameters
+    ----------
+    subestimator: scikit estimator instance, default=None
+        Instance of a scikit estimator, e.g. linear_model.ElasticNet(intercept=False).
+    b_sample: numpy array, default=None
+        Base rate of undersampled data.
+    b_all: numpy array, default=None
+        Base rate of "original"" data, i.e. to which the predictions of the subestimator should be rescaled.
+    **kwargs: dict
+        All parameters available for subestimator
+
+    Attributes
+    ----------
+    classes_: array of unique target labels.
+    fitted_: boolean, denoting whether instance is fitted.
+
+    """
     def __init__(self, subestimator=None, b_sample=None, b_all=None, **kwargs):
         self.subestimator = subestimator
         self.b_sample = b_sample
@@ -1904,6 +2038,7 @@ class ScalingEstimator(BaseEstimator):
 
     def fit(self, X, y, *args, **kwargs):
         self.classes_ = unique_labels(y)
+        self.fitted_ = True
         self.subestimator.fit(X, y, *args, **kwargs)
         return self
 
@@ -1916,8 +2051,24 @@ class ScalingEstimator(BaseEstimator):
         return yhat
 
 
-# Alternative to above with explicit classifier
 class XGBClassifier_rescale(xgb.XGBClassifier):
+    """
+    XGBClassifier wrapper which rescales predictions (e.g. to rewind undersampling). Low level code alternative to
+    ScalingEstimator, which basically only overwrites predict_proba method.
+
+    Parameters
+    ----------
+    b_sample: numpy array, default=None
+        Base rate of undersampled data.
+    b_all: list or None, default=None
+        Base rate of "original"" data, i.e. to which the predictions of the subestimator should be rescaled.
+    **kwargs: dict
+        All parameters available for XGBClassifier
+
+    Attributes
+    ----------
+    All attributes of XGBClassifier
+    """
     def __init__(self, b_sample=None, b_all=None, **kwargs):
         super().__init__(**kwargs)
         self.b_sample = b_sample
@@ -1929,12 +2080,32 @@ class XGBClassifier_rescale(xgb.XGBClassifier):
         return yhat
 
 
-# Metaestimator which undersamples before training and resclaes the predictions accordingly
 class UndersampleEstimator(BaseEstimator):
+    """
+    Metaestimator which undersamples training data and rescales predictions to rewind undersampling
+    for any scikit classification estimator.
+
+    Parameters
+    ----------
+    subestimator: scikit estimator instance
+        Instance of a scikit estimator, e.g. linear_model.ElasticNet(intercept=False).
+    n_max_per_level: int, default=np.inf
+        Maximal number of obs per target category which should be returned in undersampled training data.    
+    seed: int, default=42
+        Seed.
+    **kwargs: dict
+        All parameters available for subestimator.
+
+    Attributes
+    ----------
+    b_sample_: numpy array, comprising base rate of undersampled data.
+    b_all_:  numpy array, comprising base rate of "original"" data.
+    fitted_: boolean, denoting whether instance is fitted.
+    """
     def __init__(self, subestimator=None, n_max_per_level=np.inf, seed=42, **kwargs):
         self.subestimator = subestimator
         self.n_max_per_level = n_max_per_level
-        self.seed = seed
+        self.seed = seed  # cannot be named random_state as this might be a kwargs parameter
         self._estimator_type = subestimator._estimator_type
         if kwargs:
             self.subestimator.set_params(**kwargs)
@@ -1992,8 +2163,26 @@ class UndersampleEstimator(BaseEstimator):
         return yhat
 
 
-# Metaestimator for log-transformed target
 class LogtrafoEstimator(BaseEstimator):
+    """
+    Metaestimator for any scikit regression estimator which log-transforms target in training labels and retransforms
+    predictions to rewind, including variance estimation or residulas in order to adaptcalculation of expected value.
+
+    Parameters
+    ----------
+    subestimator: scikit estimator instance
+        Instance of a scikit estimator, e.g. linear_model.ElasticNet(intercept=False).
+    variance_scaling_factor: float, default=1
+        Factor to be multiplied on varinace estimation in order to adapt predicitons to adapt calibration of
+        predictions.
+    **kwargs: dict
+        All parameters available for subestimator.
+
+    Attributes
+    ----------
+    varest_: float, variance of residuals.
+    fitted_: boolean, denoting whether instance is fitted.
+    """
     def __init__(self, subestimator=None, variance_scaling_factor=1, **kwargs):
         self.subestimator = subestimator
         self.subestimator = self.subestimator.set_params(**kwargs)
@@ -2022,6 +2211,7 @@ class LogtrafoEstimator(BaseEstimator):
         res = self.subestimator.predict(X) - np.log(1 + y)
         print(np.std(res)**2)
         self.varest_ = np.var(res)
+        self.fitted_ = True
         return self
 
     def predict(self, X, *args, **kwargs):
@@ -2029,8 +2219,23 @@ class LogtrafoEstimator(BaseEstimator):
                        0.5 * self.variance_scaling_factor * self.varest_) - 1)
 
 
-# Convert result of scikit's variable importance to a dataframe
 def varimp2df(varimp, features):
+    """ 
+    Convert result of scikit's variable importance to a dataframe with additional information regarding 
+    variable importance.
+    
+    Parameters
+    ----------
+    varimp: dict
+        Feature importance as returned from scikit's permutation_importance function comprinsing at least 
+        "importances_mean" key
+    features: list
+        List of features
+
+    Returns
+    -------
+    Dataframe with additional computations regarding variable importace
+    """
     df_varimp = (pd.DataFrame(dict(score_diff=varimp["importances_mean"], feature=features))
                  .sort_values(["score_diff"], ascending=False).reset_index(drop=True)
                  .assign(importance=lambda x: 100 * np.where(x["score_diff"] > 0,
@@ -2039,15 +2244,41 @@ def varimp2df(varimp, features):
     return df_varimp
 
 
-# Dataframe based permutation importance which can select a subset of features for which to calculate VI
-def variable_importance(estimator, df, y, features, target_type=None, scoring=None,
+def variable_importance(estimator, df, y, features, scorer, target_type=None,
                         n_jobs=None, random_state=None):
+    """ 
+    Dataframe based permutation importance which can select a subset of features for which to calculate VI
+    (in contrast to scikit's permutation_importance function).
+    
+    Parameters
+    ----------
+    estimator: scikit estimator
+        Fitted estimator for which to calculate variable importance.
+    df: Pandas dataframe
+        Dataframe for which to calculate importance, usually training or test data.
+    y: Numpy array or Pandas series
+        Target variable.
+    features: list
+        List of features for which to calculate importance.
+    target_type: str
+        Can be "CLASS" or "MULTICLASS" or "REGR". If not specified the type is detected automatically from y. 
+        So this automatism can be overridden.
+    scorer: sklearn.metrics scorer 
+    n_jobs: int
+        Number of parallel processes used. Each feature importance is calculated in parallel by its own 
+        process.
+    random_state: int
+        Seed (used for permutation). Same for each feature.
 
+    Returns
+    -------
+    Dataframe with additional computations regarding variable importance.
+    """
     # Original performance
     if target_type is None:
         target_type = dict(continuous="REGR", binary="CLASS", multiclass="MULTICLASS")[type_of_target(y)]
     yhat = estimator.predict(df) if target_type == "REGR" else estimator.predict_proba(df)
-    score_orig = scoring._score_func(y, yhat)
+    score_orig = scorer._score_func(y, yhat)
 
     # Performance per variable after permutation
     np.random.seed(random_state)
@@ -2058,19 +2289,40 @@ def variable_importance(estimator, df, y, features, target_type=None, scoring=No
         df_copy = df.copy()
         df_copy[feature] = df_copy[feature].values[i_perm]
         yhat_perm = estimator.predict(df_copy) if target_type == "REGR" else estimator.predict_proba(df_copy)
-        score = scoring._score_func(y, yhat_perm)
+        score = scorer._score_func(y, yhat_perm)
         return score
     scores = Parallel(n_jobs=n_jobs, max_nbytes='100M')(delayed(run_in_parallel)(df, feature)
                                                         for feature in features)
     return varimp2df({"importances_mean": score_orig - scores}, features)
 
 
-# Dataframe based patial dependence which can use a reference dataset for value-grid defintion
 def partial_dependence(estimator, df, features,
                        df_ref=None, quantiles=np.arange(0.05, 1, 0.1),
                        n_jobs=4):
-    #estimator=model; df=df_test[features]; features=features_top_test; df_ref=None; quantiles=np.arange(0.05, 1, 0.1)
+    """ 
+    Dataframe based patial dependence which can use a reference dataset for value-grid defintion
+    (in contrast to scikit's partial_dependence function).
+    
+    Parameters
+    ----------
+    estimator: sklearn estimator
+        Fitted estimator for which to calculate partial dependence.
+    df: Pandas dataframe
+        Dataframe for which to calculate partial dependence, usually training or test data.
+    features: list
+        List of features for which to calculate partial dependence.
+    df_ref: Pandas dataframe, default=df
+        Reference dataframe which is used for value-grid definition.  
+    quantiles: numpy array
+        Array of quantiles to use for numeric features as grid  
+    n_jobs: int
+        Number of parallel processes used. Each feature's partial dependence is calculated in parallel by its own 
+        process.
 
+    Returns
+    -------
+    Dataframe with patial depdence information
+    """
     if df_ref is None:
         df_ref = df
 
@@ -2105,10 +2357,28 @@ def partial_dependence(estimator, df, features,
     return d_pd
 
 
-# Aggregate shapley to partial dependence
 def shap2pd(shap_values, features,
             df_ref=None, n_bins=10, format_string=".2f"):
+    """ 
+    Aggregate shapley to partial dependence.
+    
+    Parameters
+    ----------
+    shap_values: dict
+        Shap values as returned from any SHAP explainer.
+    features: list
+        List of features for which to calculate partial dependence.
+    df_ref: Pandas dataframe, default=shap_values.data
+        Reference dataframe which is used for value-grid definition.  
+    n_bins: int
+        Number of bins to use for quantile based binning of numeric feature, used as grouping for shap aggregation.
+    format_string: str
+        Format to use for bin edges of numeric feature binning.
 
+    Returns
+    -------
+    Dataframe with patial depdence information
+    """
     if df_ref is None:
         df_ref = pd.DataFrame(shap_values.data, columns=shap_values.feature_names[0])
 
@@ -2143,13 +2413,28 @@ def shap2pd(shap_values, features,
     return d_pd
 
 
-# Aggregate onehot encoded shapely values
+# TODO: remove len_nume paramter and make it flexible
 def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
-    '''
-    df_explain: data frame used to create matrix which is send to shap explainer
-    len_nume: number of numerical features building first columns of df_explain
-    l_map_onehot:  like categories_ of onehot-encoder 
-    '''
+    """
+    # Aggregate onehot encoded shapely values
+        
+    Parameters
+    ----------
+    shap_values: dict
+        Shap values as returned from any SHAP explainer.
+    df_explain: Pandas dataframe 
+        Dataframe used to create matrix which is send to shap explainer.
+    len_nume: int
+        Number of numerical features building first columns of df_explain.
+    l_map_onehot: list
+        Attribute categories_ of used onehot-encoder (or similar list).
+    round: int
+        Rounding shap values
+        
+    Returns
+    -------
+    Aggregated shap values (same structure as shap_values parameter)
+    """
 
     # Copy
     shap_values_agg = copy.copy(shap_values)
@@ -2165,7 +2450,7 @@ def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
     a_shap = np.empty((values_3d.shape[0], df_explain.shape[1], values_3d.shape[2]))
     # for k in range(a_shap.shape[2]):
 
-    # Initilaize with nume shap valus (MUST BE AT BEGINNING OF df_explain)
+    # Initilaize with nume shap valus (MUST BE AT BEGINNING OF df_explain): TODO: remove and make flexible
     start_cate = len_nume
     a_shap[:, 0:start_cate, :] = values_3d[:, 0:start_cate, :].copy()
 
@@ -2184,11 +2469,32 @@ def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
     return shap_values_agg
 
 
-# --- Plots --------------------------------------------------------------------------
+# --- Plots ------------------------------------------------------------------------------------------------------------
 
-# Plot ROC curve
 def plot_roc(ax, y, yhat,
-             color=list(sns.color_palette("colorblind").as_hex()), target_labels=None):
+             color=list(sns.color_palette("colorblind").as_hex()), 
+             target_labels=None):
+    """
+    Plot roc curve. Also capable of Multiclass data, plotting OvR (one-vs-rest) roc curves. Additionally capable
+    of Regression data, allowin concordance interprtation.
+        
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    y: Numpy array or Pandas series
+        Target.
+    yhat: Numpy array or Pandas series
+        Predictions.
+    color: list
+        Colors used for Multiclass roc curves.
+    target_labels: list
+        Labels used for Multiclass roc curves.
+        
+    Returns
+    -------
+    Nothing
+    """
 
     # also for regression
     if (y.ndim == 1) & (yhat.ndim == 1):
@@ -2228,21 +2534,43 @@ def plot_roc(ax, y, yhat,
     ax.set_ylabel(r"tpr: P($\^y$=1|$y$=1)")
 
 
-# Plot calibration
 def plot_calibration(ax, y, yhat, n_bins=5,
-                     color=list(sns.color_palette("colorblind").as_hex()), target_labels=None):
-
+                     color=list(sns.color_palette("colorblind").as_hex()), 
+                     target_labels=None):
+    """
+    Plot calibration curve. 
+        
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    y: Numpy array or Pandas series
+        Target.
+    yhat: Numpy array or Pandas series
+        Predictions.
+    n_bins: int
+        Number of bins in calibration plot.
+    color: list
+        Colors used for Multiclass calibration curves.
+    target_labels: list
+        Labels used for Multiclass calibration curves.
+        
+    Returns
+    -------
+    Nothing
+    """
+    
+    # Initialize settings needed for diagonal line processing
     minmin = np.inf
     maxmax = -np.inf
     max_yhat = -np.inf
 
+    # Plot
     if yhat.ndim > 1:
         n_classes = yhat.shape[1]
     else:
         n_classes = 1
-
     for i in np.arange(n_classes):
-        # Plot
         df_plot = (pd.DataFrame({"y": np.where(y == i, 1, 0) if yhat.ndim > 1 else y,
                                  "yhat": yhat[:, i] if yhat.ndim > 1 else yhat})
                    .assign(bin=lambda x: pd.qcut(x["yhat"], n_bins, duplicates="drop").astype("str"))
@@ -2273,9 +2601,29 @@ def plot_calibration(ax, y, yhat, n_bins=5,
         ax.legend(title="Target", loc='best')
 
 
-# PLot confusion matrix
 def plot_confusion(ax, y, yhat, threshold=0.5, cmap="Blues", target_labels=None):
-
+    """
+    Plot confusion matrix. 
+        
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    y: Numpy array or Pandas series
+        Target.
+    yhat: Numpy array or Pandas series
+        Predictions.
+    threshold: float
+        Predictions above threshold are treated as "positive" class.
+    cmap: str
+        Cmap of heatmap plot.
+    target_labels: list
+        Descriptive labels used for axis.
+        
+    Returns
+    -------
+    Nothing
+    """
     # binary label
     if yhat.ndim == 1:
         yhat_bin = np.where(yhat > threshold, 1, 0)
@@ -2318,8 +2666,28 @@ def plot_confusion(ax, y, yhat, threshold=0.5, cmap="Blues", target_labels=None)
         text.set_weight('bold')
 
 
+# TODO: adapt type to boolean
 def plot_confusionbars(ax, y, yhat, type, target_labels=None):
-
+    """
+    Plot confusion bars. 
+        
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    y: Numpy array or Pandas series
+        Target.
+    yhat: Numpy array or Pandas series
+        Predictions.
+    type: str
+        If "True" use y (true labels) as categories.
+    target_labels: list
+        Descriptive labels used for axis.
+        
+    Returns
+    -------
+    Nothing
+    """
     n_classes = yhat.shape[1]
 
     # Make series
@@ -2344,7 +2712,24 @@ def plot_confusionbars(ax, y, yhat, type, target_labels=None):
 
 
 def plot_multiclass_metrics(ax, y, yhat, target_labels=None):
-
+    """
+    Plot multiclass metrics table. 
+        
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    y: Numpy array or Pandas series
+        Target.
+    yhat: Numpy array or Pandas series
+        Predictions.
+    target_labels: list
+        Descriptive labels used for axis.
+        
+    Returns
+    -------
+    Nothing
+    """
     m_conf = confusion_matrix(y, yhat.argmax(axis=1))
     aucs = np.array([round(roc_auc_score(np.where(y == i, 1, 0), yhat[:, i]), 2) for i in np.arange(yhat.shape[1])])
     prec = np.round(np.diag(m_conf) / m_conf.sum(axis=0) * 100, 1)
@@ -2375,10 +2760,27 @@ def plot_multiclass_metrics(ax, y, yhat, target_labels=None):
     ax.set_xlabel("True label")
 
 
-# Plot precision-recall curve
 def plot_precision_recall(ax, y, yhat, annotate=True, fontsize=10):
-
-    ax = ax
+    """
+    Plot precision recall curve. 
+        
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    y: Numpy array or Pandas series
+        Target.
+    yhat: Numpy array or Pandas series
+        Predictions.
+    annotate: boolean
+        Annotate curve with precision recall values.
+    fontsize: int
+        Fontsize of annotations.
+        
+    Returns
+    -------
+    Nothing
+    """
 
     # precision recall calculation
     prec, rec, cutoff = precision_recall_curve(y, yhat)
@@ -2399,10 +2801,27 @@ def plot_precision_recall(ax, y, yhat, annotate=True, fontsize=10):
             ax.annotate(f"{thres:0.1f}", (rec[i_thres], prec[i_thres]), fontsize=fontsize)
 
 
-# Plot precision curve
 def plot_precision(ax, y, yhat, annotate=True, fontsize=10):
-
-    ax = ax
+    """
+    Plot precision curve. 
+        
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    y: Numpy array or Pandas series
+        Target.
+    yhat: Numpy array or Pandas series
+        Predictions.
+    annotate: boolean
+        Annotate curve with precision values.
+    fontsize: int
+        Fontsize of annotations.
+        
+    Returns
+    -------
+    Nothing
+    """
 
     # precision calculation
     pct_tested = np.array([])
@@ -2431,7 +2850,30 @@ def plot_precision(ax, y, yhat, annotate=True, fontsize=10):
 # Plot model performance for CLASS target
 def get_plotcalls_model_performance_CLASS(y, yhat,
                                           n_bins=5, threshold=0.5, cmap="Blues", annotate=True, fontsize=10):
-
+    """
+    Get dictionary of plot calls for predictive performance of classification. 
+        
+    Parameters
+    ----------
+    y: Numpy array or Pandas series
+        Target.
+    yhat: Numpy array or Pandas series
+        Predictions.
+    n_bins: int
+        Number of bins in calibration plot.
+    threshold: float
+        Predictions above threshold are treated as "positive" class.
+    cmap: str
+        Cmap of heatmap plot.
+    annotate: boolean
+        Annotate curves with precision recall values.
+    fontsize: int
+        Fontsize of annotations.
+        
+    Returns
+    -------
+    Dictionary with plot calls
+    """
     # yhat to 1-dim
     if ((yhat.ndim == 2) and (yhat.shape[1] == 2)):
         yhat = yhat[:, 1]
@@ -2454,7 +2896,30 @@ def get_plotcalls_model_performance_CLASS(y, yhat,
 def get_plotcalls_model_performance_MULTICLASS(y, yhat,
                                                n_bins=5, cmap="Blues", annotate=True, fontsize=10,
                                                target_labels=None):
-
+    """
+    Get dictionary of plot calls for predictive performance of multiclass classification. 
+        
+    Parameters
+    ----------
+    y: Numpy array or Pandas series
+        Target.
+    yhat: Numpy array or Pandas series
+        Predictions.
+    n_bins: int
+        Number of bins in calibration plot.
+    cmap: str
+        Cmap of heatmap plot.
+    annotate: boolean
+        Annotate curves with precision recall values.
+    fontsize: int
+        Fontsize of annotations.
+    target_labels: list
+        Descriptive labels used for axis.
+        
+    Returns
+    -------
+    Dictionary with plot calls
+    """
     # Define plot dict
     d_calls = dict()
     d_calls["roc"] = (plot_roc, dict(y=y, yhat=yhat, target_labels=target_labels))
@@ -2471,7 +2936,26 @@ def get_plotcalls_model_performance_MULTICLASS(y, yhat,
 # Plot model performance for CLASS target
 def get_plotcalls_model_performance_REGR(y, yhat,
                                          ylim, regplot, n_bins):
-
+    """
+    Get dictionary of plot calls for predictive performance of regression. 
+        
+    Parameters
+    ----------
+    y: Numpy array or Pandas series
+        Target.
+    yhat: Numpy array or Pandas series
+        Predictions.
+    ylim: tuple: (float, float)
+        Limit of y in "observeds_vs_fitted" plot and of yhat in residual plots.
+    regplot: boolean
+        Should a regression line fitted to the scatter.
+    n_bins: int
+        Number of bins in calibration plot.
+        
+    Returns
+    -------
+    Dictionary with plot calls
+    """
     # yhat to 1-dim
     if ((yhat.ndim == 2) and (yhat.shape[1] == 2)):
         yhat = yhat[:, 1]
@@ -2522,13 +3006,52 @@ def get_plotcalls_model_performance_REGR(y, yhat,
     return d_calls
 
 
-# Wrapper for plot_model_performance_<target_type>
 def get_plotcalls_model_performance(y, yhat, target_type=None,
                                     n_bins=5, threshold=0.5, target_labels=None,
                                     cmap="Blues", annotate=True, fontsize=10,
                                     ylim=None, regplot=True,
-                                    l_plots=None,
-                                    n_rows=2, n_cols=3, w=18, h=12, pdf_path=None):
+                                    l_plots=None):
+    """
+    Get dictionary of plot calls for predictive performance.
+    Wrapper for plot_model_performance_<target_type> 
+        
+    Parameters
+    ----------
+    y: Numpy array or Pandas series
+        Target.
+    yhat: Numpy array or Pandas series
+        Predictions.
+    target_type: str
+        Can be "CLASS" or "MULTICLASS" or "REGR". If not specified the type is detected automatically. 
+        So this automatism can be overridden.
+    n_bins: int
+        Number of bins in calibration plot.
+    threshold: float, only used for CLASS
+        Predictions above threshold are treated as "positive" class.
+    target_labels: list, only used for MULTICLASS
+        Descriptive labels used for axis.
+    cmap: str, only used for CLASS and MULTICLASS
+        Cmap of heatmap plot.        
+    annotate: boolean, only used for CLASS and MULTICLASS
+        Annotate curves with precision recall values.
+    fontsize: int, only used for CLASS and MULTICLASS
+        Fontsize of annotations.        
+    ylim: tuple: (float, float), only used for REGR
+        Limit of y in "observeds_vs_fitted" plot and of yhat in residual plots.        
+    regplot: boolean, only used for REGR
+        Should a regression line fitted to the scatter.    
+    l_plots: list
+        Names of plots which should be added.
+        Default:  
+        CLASS: "roc", "confusion", "distribution", "calibration", "precision_recall", "precision"
+        MULTICLASS: "roc", "confusion", "true_bars", "calibration", "pred_bars", "multiclass_metrics"
+        REGR: "observed_vs_fitted", "calibration", "distribution", 
+                  "residuals_vs_fitted", "absolute_residuals_vs_fitted", "relative_residuals_vs_fitted"        
+
+    Returns
+    -------
+    Dictionary with plot calls which can be used by plot_l_calls.
+    """
     # Derive target type
     if target_type is None:
         target_type = dict(continuous="REGR", binary="CLASS", multiclass="MULTICLASS")[type_of_target(y)]
@@ -2553,7 +3076,6 @@ def get_plotcalls_model_performance(y, yhat, target_type=None,
     return d_calls
 
 
-# Plot permutation base variable importance
 def plot_variable_importance(ax,
                              features, importance,
                              importance_cum=None, importance_mean=None, importance_error=None, max_score_diff=None,
@@ -2561,6 +3083,38 @@ def plot_variable_importance(ax,
                              category_label="Importance",
                              category_color_palette=sns.xkcd_palette(["blue", "orange", "red"]),
                              color_error="grey"):
+    """
+    # Plot permutation based variable importance.
+
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    feature: Numpy array or Pandas series
+        Feature names.
+    importance: Numpy array or Pandas series
+        Importance of features, used for plotted bars.
+    importance_cum: Numpy array or Pandas series
+        Cumulated importance of features, used for overlayed line plot.
+    importance_mean: Numpy array or Pandas series
+        Mean importance of features, used for overlayed marker plot.        
+    importance_mean: Numpy array or Pandas series
+        Error of mean importance of features, used for overlayed error lines added to markers.  
+    max_score_diff: float
+        Optional information which informs what an importance of 100 means in terms of score difference.
+    category: Numpy array or Pandas series
+        Grouping information used for coloring bars.
+    category_label: str
+        Used for title of legend.
+    category_color_palette: seaborn color palette
+        Colors of bars due to grouping by catgory.
+    color_error: str
+        Color of error bars.
+
+    Returns
+    -------
+    Nothing
+    """
 
     sns.barplot(x=importance, y=features, hue=category,
                 palette=category_color_palette, dodge=False, ax=ax)
@@ -2588,9 +3142,38 @@ def plot_variable_importance(ax,
     '''
 
 
-# Plot partial dependence
 def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, refline=None, ylim=None,
-            legend_labels=None, color="red", min_width=0.2):
+            color="red", min_width=0.2):
+    """
+    # Plot partial dependence.
+
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    feature_name: str
+        Name of feature to use in axis.
+    feature: Numpy array or Pandas series
+        Feature values.
+    yhat: Numpy array or Pandas series
+        Average prediction, i.e. partial dependence value.
+    feature_ref: Numpy array or Pandas series
+        Reference feature values used for overlayed distribution plot.        
+    yhat_err: Numpy array or Pandas series
+        Error of yhat, used for error bands.  
+    refline: float
+        Reference line, usually base rate.
+    ylim: tuple: (float, float)
+        Limits y axis.
+    color: str
+        Color of partial dependence plot.
+    min_width: float
+        Minimum width of bars for categorical feature.
+
+    Returns
+    -------
+    Nothing
+    """
 
     print("plot PD for feature " + feature_name)
     numeric_feature = pd.api.types.is_numeric_dtype(feature)
@@ -2680,12 +3263,46 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
                         linestyle="none", marker="s", capsize=5, fillstyle="none", color="grey")
 
 
-# Plot shap
+# TODO: change color to tuple
 def plot_shap(ax, shap_values, index, id,
               y_str=None, yhat_str=None,
               show_intercept=True, show_prediction=True,
               shap_lim=None,
               color=["blue", "red"], n_top=10, multiclass_index=None):
+    """
+    # Plot shapley values.
+
+    Parameters
+    ----------
+    ax: matplotlib ax
+        Ax which should be used by plot.
+    shap_values: dict
+        Shap values as returned from any SHAP explainer.
+    index: int
+        Index of shap_values to plot.
+    id: str
+        Label used in title.        
+    y_str: str
+        True label used in title.  
+    yhat_str: str
+        Predicted label used in title.  
+    show_intercept: boolean
+        Add bar for intercept.
+    show_prediction: boolean
+        Add bar for final prediction.
+    shap_lim: tuple: (float, float)
+        Limits of shap value axis.
+    color: list
+        Color used for negative and postive shap_values respecitvely.
+    n_top: int
+        Number of shap_values to plot. Rest is aggregated to "... the rest" category.
+    multiclass_index: int
+        Which multiclass label should be printed.
+
+    Returns
+    -------
+    Nothing
+    """    
 
     # Subset in case of multiclass
     if multiclass_index is not None:

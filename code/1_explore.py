@@ -29,7 +29,7 @@ import settings as s
 # --- Parameter --------------------------------------------------------------------------------------------------------
 
 # Plot
-PLOT = False
+PLOT = True
 %matplotlib
 plt.ioff() 
 # %matplotlib | %matplotlib qt | %matplotlib inline  # activate standard/inline window
