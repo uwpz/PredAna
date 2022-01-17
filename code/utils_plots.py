@@ -115,10 +115,10 @@ def inv_logit(p):
 
 def show_figure(fig):
     """ Creates a dummy figure and uses its manager to display closed 'fig' """
-        dummy = plt.figure()
-        new_manager = dummy.canvas.manager
-        new_manager.canvas.figure = fig
-        fig.set_canvas(new_manager.canvas)
+    dummy = plt.figure()
+    new_manager = dummy.canvas.manager
+    new_manager.canvas.figure = fig
+    fig.set_canvas(new_manager.canvas)
 
 
 # Plot list of tuples (plot_call, kwargs)
@@ -1979,13 +1979,17 @@ def scale_predictions(yhat, b_sample=None, b_all=None):
     if b_sample is None:
         yhat_rescaled = yhat  # no rescaling case
     else:
+        # Make yhat 2-dimensional (needed in classification setting)
         if yhat.ndim == 1:
             flag_1dim = True
-            yhat = np.column_stack((1 - yhat, yhat))  # need 2-dimensional yhat in classfication setting
+            yhat = np.column_stack((1 - yhat, yhat))  
         yhat_unnormed = (yhat * b_all) / b_sample  # basic rescaling which also needs norming to be correct
         yhat_rescaled = yhat_unnormed / yhat_unnormed.sum(axis=1, keepdims=True)  # norming
-    if flag_1dim:
-        yhat_rescaled = yhat_rescaled[:, 1]
+        
+        # Adapt to orignal shape
+        if flag_1dim:
+            yhat_rescaled = yhat_rescaled[:, 1]
+            
     return yhat_rescaled
 
 
@@ -1995,7 +1999,7 @@ class ScalingEstimator(BaseEstimator):
 
     Parameters
     ----------
-    subestimator: scikit estimator instance, default=None
+    subestimator: scikit estimator instance(!)
         Instance of a scikit estimator, e.g. linear_model.ElasticNet(intercept=False).
     b_sample: numpy array, default=None
         Base rate of undersampled data.
@@ -2010,7 +2014,7 @@ class ScalingEstimator(BaseEstimator):
     fitted_: boolean, denoting whether instance is fitted.
 
     """
-    def __init__(self, subestimator=None, b_sample=None, b_all=None, **kwargs):
+    def __init__(self, subestimator, b_sample=None, b_all=None, **kwargs):
         self.subestimator = subestimator
         self.b_sample = b_sample
         self.b_all = b_all
@@ -2038,13 +2042,19 @@ class ScalingEstimator(BaseEstimator):
         return self
 
     def fit(self, X, y, *args, **kwargs):
-        self.classes_ = unique_labels(y)
-        self.fitted_ = True
+        self.classes_ = unique_labels(y)  # scikit requirement
         self.subestimator.fit(X, y, *args, **kwargs)
+        self.fitted_ = True  # "dummy" (can be any xxx_) attribute for scikit to recognize estimator is fitted
         return self
 
     def predict(self, X, *args, **kwargs):
-        return self.subestimator.predict(X, *args, **kwargs)
+        print("")
+        if self._estimator_type == "classifier":
+            yhat = self.classes_[np.argmax(self.predict_proba(X, *args, **kwargs), 
+                                           axis=1)]
+        else:
+            yhat = self.subestimator.predict(X, *args, **kwargs)
+        return yhat
 
     def predict_proba(self, X, *args, **kwargs):
         yhat = scale_predictions(self.subestimator.predict_proba(X, *args, **kwargs),
@@ -2088,7 +2098,7 @@ class UndersampleEstimator(BaseEstimator):
 
     Parameters
     ----------
-    subestimator: scikit estimator instance
+    subestimator: scikit estimator instance (!)
         Instance of a scikit estimator, e.g. linear_model.ElasticNet(intercept=False).
     n_max_per_level: int, default=np.inf
         Maximal number of obs per target category which should be returned in undersampled training data.    
@@ -2103,7 +2113,7 @@ class UndersampleEstimator(BaseEstimator):
     b_all_:  numpy array, comprising base rate of "original"" data.
     fitted_: boolean, denoting whether instance is fitted.
     """
-    def __init__(self, subestimator=None, n_max_per_level=np.inf, seed=42, **kwargs):
+    def __init__(self, subestimator, n_max_per_level=np.inf, seed=42, **kwargs):
         self.subestimator = subestimator
         self.n_max_per_level = n_max_per_level
         self.seed = seed  # cannot be named random_state as this might be a kwargs parameter
@@ -2131,7 +2141,8 @@ class UndersampleEstimator(BaseEstimator):
         return self
 
     def fit(self, X, y, *args, **kwargs):
-
+        if self._estimator_type == "classifier":
+            self._classes = self.subestimator._classes
         # Sample and set b_sample_, b_all_
         if type_of_target(y) == "continuous":
             df_tmp = (pd.DataFrame(dict(y=y)).reset_index(drop=True).reset_index()
@@ -2156,7 +2167,12 @@ class UndersampleEstimator(BaseEstimator):
 
     def predict(self, X, *args, **kwargs):
         print("")
-        return self.subestimator.predict(X, *args, **kwargs)
+        if self._estimator_type == "classifier":
+            yhat = self.classes_[np.argmax(self.predict_proba(X, *args, **kwargs), 
+                                           axis=1)]
+        else:
+            yhat = self.subestimator.predict(X, *args, **kwargs)
+        return yhat
 
     def predict_proba(self, X, *args, **kwargs):
         yhat = scale_predictions(self.subestimator.predict_proba(X, *args, **kwargs),
@@ -2166,12 +2182,13 @@ class UndersampleEstimator(BaseEstimator):
 
 class LogtrafoEstimator(BaseEstimator):
     """
-    Metaestimator for any scikit regression estimator which log-transforms target in training labels and retransforms
-    predictions to rewind, including variance estimation or residulas in order to adaptcalculation of expected value.
+    Metaestimator for any scikit regression estimator which log-transforms target in training labels 
+    and retransforms predictions to rewind, including variance estimation or residuals in order 
+    to adapt calculation of expected value.
 
     Parameters
     ----------
-    subestimator: scikit estimator instance
+    subestimator: scikit estimator instance (!)
         Instance of a scikit estimator, e.g. linear_model.ElasticNet(intercept=False).
     variance_scaling_factor: float, default=1
         Factor to be multiplied on varinace estimation in order to adapt predicitons to adapt calibration of
@@ -2184,9 +2201,8 @@ class LogtrafoEstimator(BaseEstimator):
     varest_: float, variance of residuals.
     fitted_: boolean, denoting whether instance is fitted.
     """
-    def __init__(self, subestimator=None, variance_scaling_factor=1, **kwargs):
+    def __init__(self, subestimator, variance_scaling_factor=1, **kwargs):
         self.subestimator = subestimator
-        self.subestimator = self.subestimator.set_params(**kwargs)
         self.variance_scaling_factor = variance_scaling_factor
         self._estimator_type = subestimator._estimator_type
         if kwargs:
@@ -2209,6 +2225,8 @@ class LogtrafoEstimator(BaseEstimator):
 
     def fit(self, X, y, *args, **kwargs):
         self.subestimator.fit(X, np.log(1 + y), *args, **kwargs)
+        
+        # Calculate an overall error variance by residuals
         res = self.subestimator.predict(X) - np.log(1 + y)
         print(np.std(res)**2)
         self.varest_ = np.var(res)
@@ -2216,8 +2234,10 @@ class LogtrafoEstimator(BaseEstimator):
         return self
 
     def predict(self, X, *args, **kwargs):
-        return (np.exp(self.subestimator.predict(X, *args, **kwargs) +
+        # Retransform respecting error variance 
+        yhat = (np.exp(self.subestimator.predict(X, *args, **kwargs) +
                        0.5 * self.variance_scaling_factor * self.varest_) - 1)
+        return yhat
 
 
 def varimp2df(varimp, features):
