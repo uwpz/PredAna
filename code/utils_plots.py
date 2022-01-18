@@ -115,10 +115,10 @@ def inv_logit(p):
 
 def show_figure(fig):
     """ Creates a dummy figure and uses its manager to display closed 'fig' """
-        dummy = plt.figure()
-        new_manager = dummy.canvas.manager
-        new_manager.canvas.figure = fig
-        fig.set_canvas(new_manager.canvas)
+    dummy = plt.figure()
+    new_manager = dummy.canvas.manager
+    new_manager.canvas.figure = fig
+    fig.set_canvas(new_manager.canvas)
 
 
 # Plot list of tuples (plot_call, kwargs)
