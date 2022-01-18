@@ -35,7 +35,7 @@ import settings as s
 # --- Parameter --------------------------------------------------------------------------------------------------------
 
 # Constants
-TARGET_TYPE = "MULTICLASS"
+TARGET_TYPE = "CLASS"
 #for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 ID_NAME = "instant"
 IMPORTANCE_CUM_THRESHOLD = 98
@@ -48,7 +48,7 @@ scoring = up.D_SCORER[TARGET_TYPE]
 
 # Plot
 PLOT = True
-%matplotlib
+%matplotlib inline
 plt.ioff() 
 # %matplotlib | %matplotlib qt | %matplotlib inline  # activate standard/inline window
 # plt.ioff() | plt.ion()  # stop/start standard window
