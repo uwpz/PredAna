@@ -48,7 +48,7 @@ scoring = up.D_SCORER[TARGET_TYPE]
 
 # Plot
 PLOT = True
-%matplotlib inline
+%matplotlib
 plt.ioff() 
 # %matplotlib | %matplotlib qt | %matplotlib inline  # activate standard/inline window
 # plt.ioff() | plt.ion()  # stop/start standard window
@@ -251,6 +251,7 @@ xgb.plot_importance(model[1].subestimator if hasattr(model[1], "subestimator") e
 # --- Variable Importance by permuation argument -----------------------------------------------------------------------
 
 # Importance (on test data!)
+# TODO: HERE
 df_varimp_test = up.variable_importance(model, df_test[features], df_test[target_name], 
                                         features=features,
                                         scorer=scoring[metric],

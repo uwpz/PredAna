@@ -1968,7 +1968,7 @@ def scale_predictions(yhat, b_sample=None, b_all=None):
         Predictions to rescale.
     b_sample: numpy array
         Base rate of undersampled data.
-    b_all: list or None
+    b_all: numpy array
         Base rate of "orignal"" data, i.e. to which the undersampled yhat should be rescaled.
 
     Returns
@@ -2049,9 +2049,11 @@ class ScalingEstimator(BaseEstimator):
 
     def predict(self, X, *args, **kwargs):
         print("")
+        # Binary prediction
         if self._estimator_type == "classifier":
             yhat = self.classes_[np.argmax(self.predict_proba(X, *args, **kwargs), 
                                            axis=1)]
+        # Regression
         else:
             yhat = self.subestimator.predict(X, *args, **kwargs)
         return yhat
@@ -2142,7 +2144,8 @@ class UndersampleEstimator(BaseEstimator):
 
     def fit(self, X, y, *args, **kwargs):
         if self._estimator_type == "classifier":
-            self._classes = self.subestimator._classes
+            self._classes = unique_labels(y)
+            #self._classes = self.subestimator._classes
         # Sample and set b_sample_, b_all_
         if type_of_target(y) == "continuous":
             df_tmp = (pd.DataFrame(dict(y=y)).reset_index(drop=True).reset_index()
@@ -2167,9 +2170,11 @@ class UndersampleEstimator(BaseEstimator):
 
     def predict(self, X, *args, **kwargs):
         print("")
+        # Binary prediction
         if self._estimator_type == "classifier":
             yhat = self.classes_[np.argmax(self.predict_proba(X, *args, **kwargs), 
                                            axis=1)]
+        # Regression
         else:
             yhat = self.subestimator.predict(X, *args, **kwargs)
         return yhat
@@ -2303,12 +2308,11 @@ def variable_importance(estimator, df, y, features, scorer, target_type=None,
 
     # Performance per variable after permutation
     np.random.seed(random_state)
-    i_perm = np.random.permutation(np.arange(len(df)))  # permutation vector
+    i_perm = np.random.permutation(np.arange(len(df)))  # permutation vector, so permute each feature the same way
 
     def run_in_parallel(df, feature):
-        #feature = features[0]
         df_copy = df.copy()
-        df_copy[feature] = df_copy[feature].values[i_perm]
+        df_copy[feature] = df_copy[feature].values[i_perm]  # permute
         yhat_perm = estimator.predict(df_copy) if target_type == "REGR" else estimator.predict_proba(df_copy)
         score = scorer._score_func(y, yhat_perm)
         return score
@@ -2492,12 +2496,12 @@ def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
 
 # --- Plots ------------------------------------------------------------------------------------------------------------
 
-def plot_roc(ax, y, yhat,
+def plot_roc(ax, y, yhat, annotate=True, fontsize=10,
              color=list(sns.color_palette("colorblind").as_hex()), 
              target_labels=None):
     """
     Plot roc curve. Also capable of Multiclass data, plotting OvR (one-vs-rest) roc curves. Additionally capable
-    of Regression data, allowin concordance interprtation.
+    of Regression data, allowing concordance interpretation.
         
     Parameters
     ----------
@@ -2507,6 +2511,10 @@ def plot_roc(ax, y, yhat,
         Target.
     yhat: Numpy array or Pandas series
         Predictions.
+    annotate: boolean
+        Annotate curve with threshold values.
+    fontsize: int
+        Fontsize of annotations.
     color: list
         Colors used for Multiclass roc curves.
     target_labels: list
@@ -2517,7 +2525,7 @@ def plot_roc(ax, y, yhat,
     Nothing
     """
 
-    # also for regression
+    # Also for regression: squeeze between 0 and 1
     if (y.ndim == 1) & (yhat.ndim == 1):
         if (np.min(y) < 0) | (np.max(y) > 1):
             y = MinMaxScaler().fit_transform(y.reshape(-1, 1))[:, 0]
@@ -2526,17 +2534,29 @@ def plot_roc(ax, y, yhat,
 
     # CLASS (and regression)
     if yhat.ndim == 1:
+        
         # Roc curve
-        fpr, tpr, _ = roc_curve(y, yhat)
+        fpr, tpr, cutoff = roc_curve(y, yhat)
+        cutoff[0] = 1
         roc_auc = roc_auc_score(y, yhat)
-        # sns.lineplot(fpr, tpr, ax=ax, palette=sns.xkcd_palette(["red"]))
-        ax.plot(fpr, tpr)
+        ax.plot(fpr, tpr)  # sns.lineplot(fpr, tpr, ax=ax, palette=sns.xkcd_palette(["red"]))        
         ax.set_title(f"ROC (AUC = {roc_auc:0.2f})")
+        
+        # Annotate text
+        if annotate:
+            for thres in np.arange(0.1, 1, 0.1):
+                i_thres = np.argmax(cutoff < thres)
+                ax.annotate(f"{thres:0.1f}", (fpr[i_thres], tpr[i_thres]), fontsize=fontsize)
 
     # MULTICLASS
     else:
+        
+        # OvR (one-vs-rest) auc calculation
         n_classes = yhat.shape[1]
-        aucs = np.array([round(roc_auc_score(np.where(y == i, 1, 0), yhat[:, i]), 2) for i in np.arange(n_classes)])
+        aucs = np.array([round(roc_auc_score(np.where(y == i, 1, 0), 
+                                             yhat[:, i]), 2) for i in np.arange(n_classes)])  
+        
+        # Roc curves
         for i in np.arange(n_classes):
             y_bin = np.where(y == i, 1, 0)
             fpr, tpr, _ = roc_curve(y_bin, yhat[:, i])
@@ -2545,12 +2565,15 @@ def plot_roc(ax, y, yhat,
             else:
                 new_label = str(i) + " (" + str(aucs[i]) + ")"
             ax.plot(fpr, tpr, color=color[i], label=new_label)
+            
+        # Title and legend
         mean_auc = np.average(aucs).round(3)
         weighted_auc = np.average(aucs, weights=np.array(np.unique(y, return_counts=True))[1, :]).round(3)
         ax.set_title("ROC\n" + r"($AUC_{mean}$ = " + str(mean_auc) + r", $AUC_{weighted}$ = " +
                      str(weighted_auc) + ")")
         ax.legend(title=r"Target ($AUC_{OvR}$)", loc='best')
 
+    # Axis labels
     ax.set_xlabel(r"fpr: P($\^y$=1|$y$=0)")
     ax.set_ylabel(r"tpr: P($\^y$=1|$y$=1)")
 
@@ -2612,12 +2635,11 @@ def plot_calibration(ax, y, yhat, n_bins=5,
     ax.set_xlim(None, maxmax + 0.05 * (maxmax - minmin))
     ax.set_ylim(None, maxmax + 0.05 * (maxmax - minmin))
 
-    # Labels
+    # Labels and legend
     props = {'xlabel': r"$\bar{\^y}$ in $\^y$-bin",
              'ylabel': r"$\bar{y}$ in $\^y$-bin",
              'title': "Calibration"}
     _ = ax.set(**props)
-
     if yhat.ndim > 1:
         ax.legend(title="Target", loc='best')
 
@@ -2645,7 +2667,7 @@ def plot_confusion(ax, y, yhat, threshold=0.5, cmap="Blues", target_labels=None)
     -------
     Nothing
     """
-    # binary label
+    # Binary label
     if yhat.ndim == 1:
         yhat_bin = np.where(yhat > threshold, 1, 0)
     else:
@@ -2671,7 +2693,7 @@ def plot_confusion(ax, y, yhat, threshold=0.5, cmap="Blues", target_labels=None)
     # accuracy and confusion calculation
     acc = accuracy_score(y, yhat_bin)
 
-    # plot
+    # "Plot" dataframe as heatmap
     sns.heatmap(df_conf, annot=True, fmt=".5g", cmap=cmap, ax=ax,
                 xticklabels=True, yticklabels=True, cbar=False)
     ax.set_yticklabels(labels=ylabels, rotation=0)
@@ -2687,8 +2709,7 @@ def plot_confusion(ax, y, yhat, threshold=0.5, cmap="Blues", target_labels=None)
         text.set_weight('bold')
 
 
-# TODO: adapt type to boolean
-def plot_confusionbars(ax, y, yhat, type, target_labels=None):
+def plot_confusionbars(ax, y, yhat, y_as_category=True, target_labels=None):
     """
     Plot confusion bars. 
         
@@ -2700,8 +2721,8 @@ def plot_confusionbars(ax, y, yhat, type, target_labels=None):
         Target.
     yhat: Numpy array or Pandas series
         Predictions.
-    type: str
-        If "True" use y (true labels) as categories.
+    y_as_category: boolean
+        If True use y (true labels) as categories. Otherwise use yhat.
     target_labels: list
         Descriptive labels used for axis.
         
@@ -2711,7 +2732,7 @@ def plot_confusionbars(ax, y, yhat, type, target_labels=None):
     """
     n_classes = yhat.shape[1]
 
-    # Make series
+    # Make y and yhat series
     y = pd.Series(y, name="y").astype(str)
     yhat = pd.Series(yhat.argmax(axis=1), name="yhat").astype(str)
 
@@ -2722,7 +2743,7 @@ def plot_confusionbars(ax, y, yhat, type, target_labels=None):
         yhat = yhat.map(d_map)
 
     # Plot and adapt
-    if type == "true":
+    if y_as_category:
         plot_cate_MULTICLASS(ax, feature=y, target=yhat, reverse=True)
     else:
         plot_cate_MULTICLASS(ax, feature=yhat, target=y, exchange_x_y_axis=True)
@@ -2751,13 +2772,15 @@ def plot_multiclass_metrics(ax, y, yhat, target_labels=None):
     -------
     Nothing
     """
+    
+    # Calculate metrics
     m_conf = confusion_matrix(y, yhat.argmax(axis=1))
     aucs = np.array([round(roc_auc_score(np.where(y == i, 1, 0), yhat[:, i]), 2) for i in np.arange(yhat.shape[1])])
     prec = np.round(np.diag(m_conf) / m_conf.sum(axis=0) * 100, 1)
     rec = np.round(np.diag(m_conf) / m_conf.sum(axis=1) * 100, 1)
     f1 = np.round(2 * prec * rec / (prec + rec), 1)
 
-    # Top3 metrics
+    # Add top3 metrics
     if target_labels is None:
         target_labels = np.unique(y).tolist()
     df_metrics = (pd.DataFrame(np.column_stack((y, np.flip(np.argsort(yhat, axis=1), axis=1)[:, :3])),
@@ -2770,6 +2793,8 @@ def plot_multiclass_metrics(ax, y, yhat, target_labels=None):
                   .groupby(["label"])["acc_top1", "acc_top2", "acc_top3"].agg("mean").round(2)
                   .join(pd.DataFrame(np.stack((aucs, rec, prec, f1), axis=1),
                                      index=target_labels, columns=["auc", "recall", "precision", "f1"])))
+    
+    # "Plot" df_metrics as heatmap without color
     sns.heatmap(df_metrics.T, annot=True, fmt=".5g",
                 cmap=ListedColormap(['white']), linewidths=2, linecolor="black", cbar=False,
                 ax=ax, xticklabels=True, yticklabels=True)
@@ -2803,19 +2828,19 @@ def plot_precision_recall(ax, y, yhat, annotate=True, fontsize=10):
     Nothing
     """
 
-    # precision recall calculation
+    # Calculate precision recall
     prec, rec, cutoff = precision_recall_curve(y, yhat)
     cutoff = np.append(cutoff, 1)
     prec_rec_auc = average_precision_score(y, yhat)
 
-    # plot
+    # Plot curve
     ax.plot(rec, prec)
     props = {'xlabel': r"recall=tpr: P($\^y$=1|$y$=1)",
              'ylabel': r"precision: P($y$=1|$\^y$=1)",
              'title': f"Precision Recall Curve (AUC = {prec_rec_auc:0.2f})"}
     ax.set(**props)
 
-    # annotate text
+    # Annotate text
     if annotate:
         for thres in np.arange(0.1, 1, 0.1):
             i_thres = np.argmax(cutoff > thres)
@@ -2844,22 +2869,21 @@ def plot_precision(ax, y, yhat, annotate=True, fontsize=10):
     Nothing
     """
 
-    # precision calculation
+    # Calculate precision and pct_tested (percentage tested)
     pct_tested = np.array([])
     prec, _, cutoff = precision_recall_curve(y, yhat)
     cutoff = np.append(cutoff, 1)
     for thres in cutoff:
         pct_tested = np.append(pct_tested, [np.sum(yhat >= thres) / len(yhat)])
 
-    # plot
-    #sns.lineplot(pct_tested, prec[:-1], ax=ax, palette=sns.xkcd_palette(["red"]))
-    ax.plot(pct_tested, prec)
+    # Plot curve    
+    ax.plot(pct_tested, prec)  #sns.lineplot(pct_tested, prec[:-1], ax=ax, palette=sns.xkcd_palette(["red"]))
     props = {'xlabel': "% Samples Tested",
              'ylabel': r"precision: P($y$=1|$\^y$=1)",
              'title': "Precision Curve"}
     ax.set(**props)
 
-    # annotate text
+    # Annotate text
     if annotate:
         for thres in np.arange(0.1, 1, 0.1):
             i_thres = np.argmax(cutoff > thres)
@@ -2887,7 +2911,7 @@ def get_plotcalls_model_performance_CLASS(y, yhat,
     cmap: str
         Cmap of heatmap plot.
     annotate: boolean
-        Annotate curves with precision recall values.
+        Annotate curves with threshold values.
     fontsize: int
         Fontsize of annotations.
         
@@ -2895,13 +2919,13 @@ def get_plotcalls_model_performance_CLASS(y, yhat,
     -------
     Dictionary with plot calls
     """
-    # yhat to 1-dim
+    # Convert yhat to 1-dim
     if ((yhat.ndim == 2) and (yhat.shape[1] == 2)):
         yhat = yhat[:, 1]
 
     # Define plot dict
     d_calls = dict()
-    d_calls["roc"] = (plot_roc, dict(y=y, yhat=yhat))
+    d_calls["roc"] = (plot_roc, dict(y=y, yhat=yhat, annotate=annotate, fontsize=fontsize))
     d_calls["confusion"] = (plot_confusion, dict(y=y, yhat=yhat, threshold=threshold, cmap=cmap))
     d_calls["distribution"] = (plot_nume_CLASS, dict(feature=yhat, target=y, feature_lim=(0, 1),
                                                      feature_name=r"Predictions ($\^y$)",
@@ -2946,9 +2970,9 @@ def get_plotcalls_model_performance_MULTICLASS(y, yhat,
     d_calls["roc"] = (plot_roc, dict(y=y, yhat=yhat, target_labels=target_labels))
     d_calls["confusion"] = (plot_confusion, dict(y=y, yhat=yhat, threshold=None, cmap=cmap,
                                                  target_labels=target_labels))
-    d_calls["true_bars"] = (plot_confusionbars, dict(y=y, yhat=yhat, type="true", target_labels=target_labels))
+    d_calls["true_bars"] = (plot_confusionbars, dict(y=y, yhat=yhat, y_as_category=True, target_labels=target_labels))
     d_calls["calibration"] = (plot_calibration, dict(y=y, yhat=yhat, n_bins=n_bins, target_labels=target_labels))
-    d_calls["pred_bars"] = (plot_confusionbars, dict(y=y, yhat=yhat, type="pred", target_labels=target_labels))
+    d_calls["pred_bars"] = (plot_confusionbars, dict(y=y, yhat=yhat, y_as_category=False, target_labels=target_labels))
     d_calls["multiclass_metrics"] = (plot_multiclass_metrics, dict(y=y, yhat=yhat, target_labels=target_labels))
 
     return d_calls
@@ -2977,7 +3001,7 @@ def get_plotcalls_model_performance_REGR(y, yhat,
     -------
     Dictionary with plot calls
     """
-    # yhat to 1-dim
+    # Convert yhat to 1-dim
     if ((yhat.ndim == 2) and (yhat.shape[1] == 2)):
         yhat = yhat[:, 1]
 
