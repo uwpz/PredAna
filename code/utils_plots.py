@@ -2283,13 +2283,14 @@ def variable_importance(estimator, df, y, features, scorer, target_type=None,
     df: Pandas dataframe
         Dataframe for which to calculate importance, usually training or test data.
     y: Numpy array or Pandas series
-        Target variable.
+        Target variable, needed to calcuate score
     features: list
         List of features for which to calculate importance.
+    scorer: sklearn.metrics scorer 
+        Metric which is the basis to calcuate importance
     target_type: str
         Can be "CLASS" or "MULTICLASS" or "REGR". If not specified the type is detected automatically from y. 
         So this automatism can be overridden.
-    scorer: sklearn.metrics scorer 
     n_jobs: int
         Number of parallel processes used. Each feature importance is calculated in parallel by its own 
         process.
@@ -2318,7 +2319,10 @@ def variable_importance(estimator, df, y, features, scorer, target_type=None,
         return score
     scores = Parallel(n_jobs=n_jobs, max_nbytes='100M')(delayed(run_in_parallel)(df, feature)
                                                         for feature in features)
-    return varimp2df({"importances_mean": score_orig - scores}, features)
+    
+    # Calc performance diff, i.e. importance
+    df_varimp = varimp2df({"importances_mean": score_orig - scores}, features)
+    return df_varimp
 
 
 def partial_dependence(estimator, df, features,
@@ -2348,35 +2352,35 @@ def partial_dependence(estimator, df, features,
     -------
     Dataframe with patial depdence information
     """
+    # Set reference data
     if df_ref is None:
         df_ref = df
 
-    def run_in_parallel(feature):
+    # Calc partial dependence
+    def run_in_parallel(feature, df, df_ref):
+        
+        # Derive value grid for which dependence is calculated
         if pd.api.types.is_numeric_dtype(df_ref[feature]):
             values = np.unique(df_ref[feature].quantile(quantiles).values)
         else:
             values = df_ref[feature].unique()
 
+        # Loop over value grid and calc dependence
         df_copy = df.copy()  # save original data
-
-        #yhat_pd = np.array([]).reshape(0, 1 if estimator._estimator_type == "regressor" else len(estimator.classes_))
-        df_return = pd.DataFrame()
+        df_pd_feature = pd.DataFrame()
         for value in values:
             df_copy[feature] = value
-            df_return = df_return.append(
+            df_pd_feature = df_pd_feature.append(
                 pd.DataFrame(np.mean(estimator.predict_proba(df_copy) if estimator._estimator_type == "classifier" else
                                      estimator.predict(df_copy), axis=0).reshape(1, -1)))
-        # yhat_pd = np.append(yhat_pd,
-        #                     np.mean(estimator.predict_proba(df_pd) if estimator._estimator_type == "classifier" else
-        #                             estimator.predict(df_pd), axis=0).reshape(1, -1), axis=0)
-        df_return.columns = ["yhat"] if estimator._estimator_type == "regressor" else estimator.classes_
-        df_return["value"] = values
-        df_return = df_return.reset_index(drop=True)
+        df_pd_feature.columns = ["yhat"] if estimator._estimator_type == "regressor" else estimator.classes_
+        df_pd_feature["value"] = values
+        df_pd_feature = df_pd_feature.reset_index(drop=True)
 
-        return df_return
+        return df_pd_feature
 
     # Run in parallel and append
-    l_pd = (Parallel(n_jobs=n_jobs, max_nbytes='100M')(delayed(run_in_parallel)(feature)
+    l_pd = (Parallel(n_jobs=n_jobs, max_nbytes='100M')(delayed(run_in_parallel)(feature, df, df_ref)
                                                        for feature in features))
     d_pd = dict(zip(features, l_pd))
     return d_pd
@@ -3143,7 +3147,7 @@ def plot_variable_importance(ax,
         Cumulated importance of features, used for overlayed line plot.
     importance_mean: Numpy array or Pandas series
         Mean importance of features, used for overlayed marker plot.        
-    importance_mean: Numpy array or Pandas series
+    importance_error: Numpy array or Pandas series
         Error of mean importance of features, used for overlayed error lines added to markers.  
     max_score_diff: float
         Optional information which informs what an importance of 100 means in terms of score difference.
@@ -3313,7 +3317,7 @@ def plot_shap(ax, shap_values, index, id,
               y_str=None, yhat_str=None,
               show_intercept=True, show_prediction=True,
               shap_lim=None,
-              color=["blue", "red"], n_top=10, multiclass_index=None):
+              color=("blue", "red"), n_top=10, multiclass_index=None):
     """
     # Plot shapley values.
 
@@ -3337,7 +3341,7 @@ def plot_shap(ax, shap_values, index, id,
         Add bar for final prediction.
     shap_lim: tuple: (float, float)
         Limits of shap value axis.
-    color: list
+    color: 2-tuple
         Color used for negative and postive shap_values respecitvely.
     n_top: int
         Number of shap_values to plot. Rest is aggregated to "... the rest" category.

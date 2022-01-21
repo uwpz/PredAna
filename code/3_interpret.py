@@ -251,7 +251,6 @@ xgb.plot_importance(model[1].subestimator if hasattr(model[1], "subestimator") e
 # --- Variable Importance by permuation argument -----------------------------------------------------------------------
 
 # Importance (on test data!)
-# TODO: HERE
 df_varimp_test = up.variable_importance(model, df_test[features], df_test[target_name], 
                                         features=features,
                                         scorer=scoring[metric],
@@ -270,21 +269,18 @@ df_varimp_test_cv = pd.DataFrame()
 for i, (i_train, i_test) in enumerate(cv_5foldsep.split(df_traintest, test_fold=(df_traintest["fold"] == "test"))):
     df_test_cv = df_traintest.iloc[i_test, :]
     df_varimp_test_cv = df_varimp_test_cv.append(
-        up.variable_importance(d_cv["estimator"][i], df_test_cv[features], df_test_cv[target_name],
-                               features=features_top_test,
-                               scorer=scoring[metric],
-                               random_state=42, n_jobs=s.N_JOBS).assign(run=i))
+        (up.variable_importance(d_cv["estimator"][i], df_test_cv[features], df_test_cv[target_name],
+                                features=features_top_test,
+                                scorer=scoring[metric],
+                                random_state=42, n_jobs=s.N_JOBS)
+         .assign(run=i)))
 df_varimp_test_err = (df_varimp_test_cv.groupby("feature")["score_diff", "importance"].agg("std")
-                     .pipe(lambda x: x.set_axis([col + "_error" for col in x.columns], axis=1, inplace=False))
-                     .reset_index())
-
-# Add other information (e.g. special category)
-df_varimp_test["category"] = np.where(df_varimp_test["feature"].isin(nume), "nume", "cate")
-#df_varimp_test["category"] = pd.cut(df_varimp_test["importance"], [-np.inf, 10, 50, np.inf],
-#                                    labels=["low", "medium", "high"])
+                      .pipe(lambda x: x.set_axis([col + "_error" for col in x.columns], axis=1, inplace=False))
+                      .reset_index())
 
 # Plot Importance
 df_varimp_plot = (df_varimp_test.query("feature in @features_top_test")
+                  .assign(category=lambda x: np.where(x["feature"].isin(nume), "nume", "cate"))  # for coloring
                   .merge(df_varimp_test_err, how="left", on="feature")
                   .merge(df_varimp_train[["feature", "importance", "importance_cum"]]
                          .rename(columns={"importance": "importance_train",
@@ -293,12 +289,12 @@ df_varimp_plot = (df_varimp_test.query("feature in @features_top_test")
                   .sort_values("importance_train", ascending=False))
 l_calls = [(up.plot_variable_importance,
             dict(features=df_varimp_plot["feature"],
-                 importance=df_varimp_plot["importance_train"],
-                 importance_cum=df_varimp_plot["importance_cum_train"],
-                 importance_mean=df_varimp_plot["importance"],
+                 importance=df_varimp_plot["importance_train"],  # train imp as bars
+                 importance_cum=df_varimp_plot["importance_cum_train"],  # train imp for cumulative
+                 importance_mean=df_varimp_plot["importance"],  # test imp for mean+error marker
                  importance_error=df_varimp_plot["importance_error"],
-                 #max_score_diff=df_varimp_plot["score_diff"][0].round(2),
-                 category=df_varimp_plot["category"],
+                 #max_score_diff=df_varimp_plot["score_diff"][0].round(2),  # no max_score_diff as diff for train/test
+                 category=df_varimp_plot["category"],  # coloring
                  color_error="black"))]
 if PLOT:
     _ = up.plot_l_calls(l_calls,
@@ -347,7 +343,7 @@ for i, (i_train, i_test) in enumerate(cv_5foldsep.split(df_traintest,
                                      df_ref=df_train)
     for feature in features_top_test:
         d_pd_cv[feature] = d_pd_cv[feature].append(d_pd_run[feature].assign(run=i)).reset_index(drop=True)
-d_pd_err = {feature: df_tmp.drop(columns="run").groupby("value").std()
+d_pd_err = {feature: df_tmp.drop(columns="run").groupby("value").std().reset_index(drop=True)
             for feature, df_tmp in d_pd_cv.items()}
 
 # Plot it
@@ -357,8 +353,8 @@ for i, feature in enumerate(list(d_pd.keys())):
     l_calls.append(
         (up.plot_pd,
          dict(feature_name=feature, feature=d_pd[feature]["value"],
-              yhat=d_pd[feature].iloc[:, i_col[TARGET_TYPE]].values,
-              yhat_err=d_pd_err[feature].iloc[:, i_col[TARGET_TYPE]].values,
+              yhat=d_pd[feature].iloc[:, i_col[TARGET_TYPE]],
+              #yhat_err=d_pd_err[feature].iloc[:, i_col[TARGET_TYPE]],
               feature_ref=df_test[feature],
               refline=yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR" else yhat_test.mean(),
               ylim=None, color=s.COLORBLIND[i_col[TARGET_TYPE]])))
