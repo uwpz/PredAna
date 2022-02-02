@@ -54,7 +54,7 @@ TOOMANY_THRESHOLD = 5
 # Read data and adapt to be more readable
 df_orig = (pd.read_csv(s.DATALOC + "hour.csv", parse_dates=["dteday"])
            .replace({"season": {1: "1_winter", 2: "2_spring", 3: "3_summer", 4: "4_fall"},
-                        "yr": {0: "2011", 1: "2012"},
+                     "yr": {0: "2011", 1: "2012"},
                      "holiday": {0: "No", 1: "Yes"},
                      "workingday": {0: "No", 1: "Yes"},
                      "weathersit": {1: "1_clear", 2: "2_misty", 3: "3_light rain", 4: "4_heavy rain"}})
@@ -68,8 +68,8 @@ df_orig = (pd.read_csv(s.DATALOC + "hour.csv", parse_dates=["dteday"])
 
 # Create some artifacts helping to illustrate important concepts
 df_orig["high_card"] = df_orig["hum"].astype(str)  # high cardinality categorical variable
-df_orig["weathersit"] = df_orig["weathersit"].where(df_orig["weathersit"] != "4_heavy rain", np.nan)  # some missings
-df_orig["holiday"] = np.where(np.random.choice(range(10), len(df_orig)) == 0, np.nan, df_orig["holiday"])
+df_orig["weathersit"] = df_orig["weathersit"].where(df_orig["weathersit"] != "4_heavy rain", np.nan)  # inform miss
+df_orig["holiday"] = np.where(np.random.choice(range(10), len(df_orig)) == 0, np.nan, df_orig["holiday"])  # random miss
 df_orig["windspeed"] = df_orig["windspeed"].where(df_orig["windspeed"] != 0, other=np.nan)  # some missings
 
 # Create artificial targets

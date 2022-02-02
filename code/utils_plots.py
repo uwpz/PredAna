@@ -188,14 +188,18 @@ def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None, c
 
 def reduce2prob(yhat):
     """ Reduce prediction matrix to 1-dim-array comprising probability of "1"-class """
-    if (yhat.ndim == 2) and (yhat.shape[1] == 2):
-        return yhat[:, 1]
+    if (yhat.ndim == 2):
+        if (yhat.shape[1] == 2):
+            return yhat[:, 1]
+        if (yhat.shape[1] == 1):
+            return yhat[:, 0]
     else:
         return yhat
 
 
 def spear(y, yhat) -> float:
     """ Spearman correlation (working also for classification tasks) """
+    y = reduce2prob(y)
     yhat = reduce2prob(yhat)  # Catch classification case
     spear = pd.DataFrame({"y": y, "yhat": yhat}).corr(method="spearman").values[0, 1]
     return spear
@@ -634,6 +638,7 @@ def _helper_inner_barplot_rotated(ax, x, y, inset_size=0.2):
     if len(xticks) > len(y):
         _ = inset_ax.set_xticks(xticks[1::2])
     _ = ax.set_yticks(yticks[(yticks >= ylim[0]) & (yticks <= ylim[1])])
+     
 
 
 def plot_cate_CLASS(ax,
@@ -733,8 +738,9 @@ def plot_cate_MULTICLASS(ax,
                          title=None,
                          add_miss_info=True,
                          color=list(sns.color_palette("colorblind").as_hex()),
-                         reverse=False,
-                         exchange_x_y_axis=False,
+                         reverse_feature=False,
+                         reverse_target=False,
+                         vbar=False,
                          verbose=True):
     """
     Plots categorical feature vs multiclass target (as segemented bars).
@@ -765,9 +771,11 @@ def plot_cate_MULTICLASS(ax,
         Show percentage of missings in feature's axis label.
     color: list
         List of colors assigned to target's categories.
-    reverse: boolean
-        Should bar segments be reversed?
-    exchange_x_y_axis: boolean
+    reverse_feature: boolean
+        Should feature categories be reversed?
+    reverse_target: boolean
+        Should target categories be reversed?
+    vbar: boolean
         Should default horizontal bars on y-Axis be plotted as vertical bars on x-Axis?
     verbose: Boolean
         Print processing information.
@@ -787,14 +795,20 @@ def plot_cate_MULTICLASS(ax,
     # Prepare data
     df_plot = _helper_calc_barboxwidth(feature, target, min_width=min_width)
 
-    # Reverse
-    if reverse:
+    # Reverse feature
+    if reverse_feature:
         df_plot = df_plot.iloc[::-1]
-
+        
+    # Reverse target
+    target_categories = list(np.sort(target.unique()))
+    if reverse_target:
+        target_categories = target_categories[::-1]   
+        color = color[(len(target_categories)-1)::-1]
+                      
     # Segmented barplot
     offset = np.zeros(len(df_plot))
-    for m, member in enumerate(np.sort(target.unique())):
-        if not exchange_x_y_axis:
+    for m, member in enumerate(target_categories):
+        if not vbar:
             ax.barh(y=df_plot[feature.name + "_fmt"], width=df_plot[member], height=df_plot["w"],
                     left=offset,
                     color=color[m], label=member, edgecolor="black", alpha=0.5, linewidth=1)
@@ -807,10 +821,12 @@ def plot_cate_MULTICLASS(ax,
     ax.set_title(title)
 
     # Inner barplot
-    if not exchange_x_y_axis:
+    if not vbar:
         _helper_inner_barplot(ax, x=df_plot[feature.name + "_fmt"], y=df_plot["pct"], inset_size=inset_size)
     else:
-        _helper_inner_barplot_rotated(ax, x=df_plot[feature.name + "_fmt"], y=df_plot["pct"], inset_size=inset_size)
+        #ax.set_xticklabels(labels=ax.get_xticklabels(), rotation=45)
+        _helper_inner_barplot_rotated(ax, x=df_plot[feature.name + "_fmt"], y=df_plot["pct"], 
+                                      inset_size=inset_size)
 
     # Missing information
     if add_miss_info:
@@ -2093,6 +2109,63 @@ class XGBClassifier_rescale(xgb.XGBClassifier):
         return yhat
 
 
+from pytorch_tabnet.tab_model import TabNetClassifier, TabNetRegressor
+import torch
+class TabNet_gridsearch(BaseEstimator):
+
+    def __init__(self, subestimator, batch_size=1024, max_epochs=200, patience=15, **kwargs):
+        self.subestimator = subestimator
+        self.batch_size = batch_size
+        self.max_epochs = max_epochs
+        self.patience = patience
+        if isinstance(self.subestimator, TabNetRegressor):
+            self._estimator_type = "regressor"  
+        else:
+            self._estimator_type = "classifier"
+        if kwargs:
+            self.subestimator.set_params(**kwargs)
+     
+    def get_params(self, deep=True):
+        return dict(subestimator=self.subestimator,
+                    batch_size=self.batch_size,
+                    max_epochs=self.max_epochs,
+                    patience=self.patience,
+                    **self.subestimator.get_params())  
+
+    def set_params(self, **params):
+        if "subestimator" in params:
+            self.subestimator = params["subestimator"]
+            del params["subestimator"]
+        if "batch_size" in params:
+            self.batch_size = params["batch_size"]
+            del params["batch_size"]
+        if "max_epochs" in params:
+            self.max_epochs = params["max_epochs"]
+            del params["max_epochs"]
+        if "patience" in params:
+            self.b_all = params["patience"]
+            del params["patience"]
+        self.subestimator = self.subestimator.set_params(**params)
+        return self
+
+    def fit(self, X, y, *args, **kwargs):
+        if self._estimator_type == "classifier":
+            self.classes_ = unique_labels(y)
+                            
+        # Fit
+        self.subestimator.fit(X, y, *args,
+                              batch_size=self.batch_size, max_epochs=self.max_epochs, patience=self.patience,
+                              **kwargs)
+        return self
+
+    def predict(self, X, *args, **kwargs):
+        return self.subestimator.predict(X, *args, **kwargs)
+
+    def predict_proba(self, X, *args, **kwargs):
+        return self.subestimator.predict_proba(X, *args, **kwargs)
+
+
+
 class UndersampleEstimator(BaseEstimator):
     """
     Metaestimator which undersamples training data and rescales predictions to rewind undersampling
@@ -2144,8 +2217,8 @@ class UndersampleEstimator(BaseEstimator):
 
     def fit(self, X, y, *args, **kwargs):
         if self._estimator_type == "classifier":
-            self._classes = unique_labels(y)
-            #self._classes = self.subestimator._classes
+            self.classes_ = unique_labels(y)
+            #self.classes_ = self.subestimator.classes_
         # Sample and set b_sample_, b_all_
         if type_of_target(y) == "continuous":
             df_tmp = (pd.DataFrame(dict(y=y)).reset_index(drop=True).reset_index()
@@ -2748,9 +2821,9 @@ def plot_confusionbars(ax, y, yhat, y_as_category=True, target_labels=None):
 
     # Plot and adapt
     if y_as_category:
-        plot_cate_MULTICLASS(ax, feature=y, target=yhat, reverse=True)
+        plot_cate_MULTICLASS(ax, feature=y, target=yhat, reverse_feature=True)
     else:
-        plot_cate_MULTICLASS(ax, feature=yhat, target=y, exchange_x_y_axis=True)
+        plot_cate_MULTICLASS(ax, feature=yhat, target=y, vbar=True, reverse_target=True)
     ax.set_xlabel("% Predicted label")
     ax.set_ylabel("True label")
     ax.set_title("")
@@ -3312,7 +3385,6 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
                         linestyle="none", marker="s", capsize=5, fillstyle="none", color="grey")
 
 
-# TODO: change color to tuple
 def plot_shap(ax, shap_values, index, id,
               y_str=None, yhat_str=None,
               show_intercept=True, show_prediction=True,

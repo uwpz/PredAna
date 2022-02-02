@@ -35,7 +35,7 @@ import settings as s
 # --- Parameter --------------------------------------------------------------------------------------------------------
 
 # Constants
-TARGET_TYPE = "CLASS"
+TARGET_TYPE = "MULTICLASS"
 #for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 ID_NAME = "instant"
 IMPORTANCE_CUM_THRESHOLD = 98
@@ -47,7 +47,7 @@ metric = "spear" if TARGET_TYPE == "REGR" else "auc"
 scoring = up.D_SCORER[TARGET_TYPE]
 
 # Plot
-PLOT = True
+PLOT = False
 %matplotlib
 plt.ioff() 
 # %matplotlib | %matplotlib qt | %matplotlib inline  # activate standard/inline window
@@ -354,14 +354,14 @@ for i, feature in enumerate(list(d_pd.keys())):
         (up.plot_pd,
          dict(feature_name=feature, feature=d_pd[feature]["value"],
               yhat=d_pd[feature].iloc[:, i_col[TARGET_TYPE]],
-              #yhat_err=d_pd_err[feature].iloc[:, i_col[TARGET_TYPE]],
+              yhat_err=d_pd_err[feature].iloc[:, i_col[TARGET_TYPE]],
               feature_ref=df_test[feature],
               refline=yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR" else yhat_test.mean(),
               ylim=None, color=s.COLORBLIND[i_col[TARGET_TYPE]])))
 if PLOT:
     up.plot_l_calls(l_calls, pdf_path=f"{s.PLOTLOC}3__pd__{TARGET_TYPE}.pdf")
 
-'''
+
 # STILL NOT WORKING FOR MULTICLASS
 # --- Shap based PD ----------------------------------------------------------------------------------------------------
 
@@ -398,7 +398,7 @@ for i, feature in enumerate(list(d_pd_shap.keys())):
                          ylim=None, color=s.COLORBLIND[i_col[TARGET_TYPE]])))
 if PLOT:
     up.plot_l_calls(l_calls, pdf_path=f"{s.PLOTLOC}3__pd_shap__{TARGET_TYPE}.pdf")
-'''
+
 
 
 
@@ -466,6 +466,7 @@ else:
 '''
 
 # Plot it
+# TODO: move multiclass index out of function
 l_calls = list()
 for i in range(len(df_explain)):
     y_str = (str(df_explain[target_name].iloc[i]) if TARGET_TYPE != "REGR"

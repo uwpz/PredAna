@@ -37,7 +37,7 @@ import settings as s
 
 # --- Parameter --------------------------------------------------------------------------------------------------------
 
-TARGET_TYPE = "MULTICLASS"
+TARGET_TYPE = "REGR"
 #for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
 # Main parameter
@@ -99,7 +99,7 @@ cv_5foldsep = up.KFoldSep(5, random_state=42)
 
 '''
 # Test a split
-split = cv_5fold.split(df_tune)
+split = cv_index.split(df_tune)
 i_train, i_test = next(split)
 df_tune["fold"].iloc[i_train].describe()
 df_tune["fold"].iloc[i_test].describe()
@@ -119,17 +119,17 @@ print(np.sort(i_test))
 
 fit = (GridSearchCV(SGDRegressor(penalty="ElasticNet", warm_start=True) if TARGET_TYPE == "REGR" else
                     SGDClassifier(loss="log", penalty="ElasticNet", warm_start=True),  # , tol=1e-2
-                    {"alpha": [2 ** x for x in range(-8, -20, -2)],
+                    {"alpha": [2 ** x for x in range(-10, -20, -2)],
                     "l1_ratio": [0, 0.5, 1]},
                     cv=cv_5fold.split(df_tune),
                     refit=False,
                     scoring=scoring,
                     return_train_score=True,
                     n_jobs=s.N_JOBS)
-       .fit(X=X_binned,
+       .fit(X=X_standard,
             y=df_tune[target_name]))
 # Plot: use metric="score" if scoring has only 1 metric
-fig = up.plot_cvresults(fit.cv_results_, metric=metric, x_var="alpha", color_var="l1_ratio")
+fig = up.plot_cvresults(fit.cv_results_, metric=metric, x_var="alpha", color_var="l1_ratio", show_gap=False)
 fig.savefig(f"{s.PLOTLOC}2__tune_sgd__{TARGET_TYPE}.pdf")
 
 # Usually better alternative
@@ -226,6 +226,47 @@ fig = up.plot_cvresults(fit.cv_results_, metric=metric,
 fig.savefig(f"{s.PLOTLOC}2__tune_lgbm__{TARGET_TYPE}.pdf")
 
 
+
+'''
+# --- Tabnet ---------------------------------------------------------------------------------------------------------
+from pytorch_tabnet.tab_model import TabNetClassifier, TabNetRegressor
+import torch
+
+i_cate_encoded = [i for i in range(len(features_encoded)) if features_encoded[i].endswith("_ENCODED")]
+dim_cate_encoded = [len(np.unique(X_encoded[:, i])) for i in i_cate_encoded]
+X_standard_dense = np.array(X_standard.todense())
+i_cate_standard = [i for i in range(len(nume_standard)) if nume_standard[i].endswith("_ENCODED")]
+dim_cate_standard = [len(np.unique(X_standard_dense[:, i])) for i in i_cate_standard]
+
+# Fit
+
+start = time.time()
+fit = (GridSearchCV(
+                    up.TabNet_gridsearch(TabNetRegressor(cat_idxs=i_cate_standard,  # i_cate_encoded/standard
+                                                          cat_dims=dim_cate_standard,  # dim_cate_encoded/standard
+                                                          mask_type="entmax",
+                                                          optimizer_params={"lr": 2e-2},
+                                                          scheduler_params={"step_size": 50, "gamma": 0.9},
+                                                          scheduler_fn=torch.optim.lr_scheduler.StepLR)),
+                    {"max_epochs": [x for x in range(50, 550, 100)], 
+                     "batch_size": [128 * 8],
+                     "patience": [50],
+                     "cat_emb_dim": [1, 2]},
+                    cv=cv_index.split(df_tune),
+                    refit=False,
+                    scoring=scoring,
+                    return_train_score=True,
+                    n_jobs=s.N_JOBS)
+       .fit(X_standard_dense,  #X_encoded/standard_dense
+            y=df_tune[target_name].values.reshape(-1,1)))
+print(time.time() - start)
+
+fig = up.plot_cvresults(fit.cv_results_, show_gap=False, metric=metric,
+                        x_var="max_epochs", color_var="batch_size", column_var="cat_emb_dim")
+fig.savefig(f"{s.PLOTLOC}2__tune_tabnet__{TARGET_TYPE}.pdf")
+'''
+
+
 # --- DeepL ------------------------------------------------------------------------------------------------------------
 
 # Keras wrapper for Scikit
@@ -280,7 +321,7 @@ fit = (GridSearchCV(KerasRegressor(build_fn=keras_model,
                                     TARGET_TYPE=TARGET_TYPE,
                                     verbose=0),
                     {"size": ["10", "10-10", "20"],
-                    "lambdah": [1e-8], "dropout": [None],
+                     "lambdah": [1e-8], "dropout": [None],
                      "batch_size": [40], "lr": [1e-3],
                      "batch_normalization": [False, True],
                      "activation": ["relu", "elu"],
