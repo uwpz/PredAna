@@ -30,6 +30,7 @@ from sklearn.base import BaseEstimator, TransformerMixin, clone  # ClassifierMix
 import xgboost as xgb
 import lightgbm as lgbm
 from itertools import product  # for GridSearchCV_xlgb
+from pytorch_tabnet.tab_model import TabNetRegressor
 
 # Other
 from scipy.interpolate import splev, splrep
@@ -189,12 +190,14 @@ def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None, c
 def reduce2prob(yhat):
     """ Reduce prediction matrix to 1-dim-array comprising probability of "1"-class """
     if (yhat.ndim == 2):
-        if (yhat.shape[1] == 2):
+        if (yhat.shape[1] == 2):  # 2-dim array or matrix, so classification
             return yhat[:, 1]
-        if (yhat.shape[1] == 1):
+        elif (yhat.shape[1] == 1):  # 1-dim matrix, so regression
             return yhat[:, 0]
+        else:
+            return yhat  # multiclass
     else:
-        return yhat
+        return yhat  # regression or classification
 
 
 def spear(y, yhat) -> float:
@@ -1653,7 +1656,7 @@ class GridSearchCV_xlgb(GridSearchCV):
         # Materialize generator as this cannot be pickled for parallel
         self.cv = list(check_cv(self.cv, y).split(X))
 
-        # TODO: Iterate in parallel also over splits (see original fit method)
+        # Process in parallel
         def run_in_parallel(i):
             # for i in range(len(df_param_grid)):
 
@@ -2109,10 +2112,30 @@ class XGBClassifier_rescale(xgb.XGBClassifier):
         return yhat
 
 
-from pytorch_tabnet.tab_model import TabNetClassifier, TabNetRegressor
-import torch
-class TabNet_gridsearch(BaseEstimator):
 
+class TabNetcustom(BaseEstimator):
+    """
+    Metaestimator which allows TabNet models to tune also "fit" parameter.
+
+    Parameters
+    ----------
+    subestimator: TabNetRegressor or TabNetClassifier instance(!)
+        Instance of a TabNet estimator, e.g. TabNetClassifier().
+    batch_size: int, default=1024
+        TabNet's fit paramter batch_size.
+    max_epochs: int, default=200
+        TabNet's fit paramter max_epochs.
+    patience: int, default=15
+        TabNet's fit paramter patience.
+    **kwargs: dict
+        All parameters available for subestimator
+
+    Attributes
+    ----------
+    classes_: array of unique target labels.
+    fitted_: boolean, denoting whether instance is fitted.
+
+    """
     def __init__(self, subestimator, batch_size=1024, max_epochs=200, patience=15, **kwargs):
         self.subestimator = subestimator
         self.batch_size = batch_size
@@ -2156,6 +2179,7 @@ class TabNet_gridsearch(BaseEstimator):
         self.subestimator.fit(X, y, *args,
                               batch_size=self.batch_size, max_epochs=self.max_epochs, patience=self.patience,
                               **kwargs)
+        self.fitted_ = True  # "dummy" (can be any xxx_) attribute for scikit to recognize estimator is fitted
         return self
 
     def predict(self, X, *args, **kwargs):
@@ -2235,7 +2259,7 @@ class UndersampleEstimator(BaseEstimator):
         X_under = X[df_tmp["index"].values, :]
         
         # Denote that it is fitted
-        self.fitted_ = True
+        self.fitted_ = True  # "dummy" (can be any xxx_) attribute for scikit to recognize estimator is fitted
 
         # Fit
         self.subestimator.fit(X_under, y_under, *args, **kwargs)
@@ -2498,24 +2522,23 @@ def shap2pd(shap_values, features,
                                    format(bin_edges[0][i], format_string) + " - " +
                                    format(bin_edges[0][i + 1], format_string) + ")"
                                    for i in range(len(bin_edges[0]) - 1)])
-            df_shap = pd.DataFrame({"value": bin_labels[(kbinsdiscretizer_fit
+            df_shap = pd.DataFrame({"yhat": shap_values.values[:, i_feature],
+                                    "value": bin_labels[(kbinsdiscretizer_fit
                                                          .transform(shap_values.data[:, [i_feature]])[:, 0])
-                                                        .astype(int)],
-                                    "yhat": shap_values.values[:, i_feature]})  # TODO: MULTICLASS
+                                                        .astype(int)]})  # TODO: MULTICLASS
 
         # Categorical feature
         else:
-            df_shap = pd.DataFrame({"value": shap_values.data[:, i_feature],
-                                    "yhat": shap_values.values[:, i_feature]})  # TODO: MULTICLASS
+            df_shap = pd.DataFrame({"yhat": shap_values.values[:, i_feature],
+                                    "value": shap_values.data[:, i_feature]})  # TODO: MULTICLASS
 
         # Aggregate and add intercept
         df_shap_agg = (df_shap.groupby("value").mean().reset_index()
-                       .assign(yhat=lambda x: x["yhat"] + intercept))
+                       .assign(yhat=lambda x: x["yhat"] + intercept))  # TODO: MULTICLASS
         d_pd[feature] = df_shap_agg
     return d_pd
 
 
-# TODO: remove len_nume paramter and make it flexible
 def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
     """
     # Aggregate onehot encoded shapely values
@@ -2527,7 +2550,7 @@ def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
     df_explain: Pandas dataframe 
         Dataframe used to create matrix which is send to shap explainer.
     len_nume: int
-        Number of numerical features building first columns of df_explain.
+        Number of numerical features building first columns (!) of df_explain.
     l_map_onehot: list
         Attribute categories_ of used onehot-encoder (or similar list).
     round: int
@@ -3389,7 +3412,8 @@ def plot_shap(ax, shap_values, index, id,
               y_str=None, yhat_str=None,
               show_intercept=True, show_prediction=True,
               shap_lim=None,
-              color=("blue", "red"), n_top=10, multiclass_index=None):
+              color=("blue", "red"), 
+              n_top=10):
     """
     # Plot shapley values.
 
@@ -3417,21 +3441,11 @@ def plot_shap(ax, shap_values, index, id,
         Color used for negative and postive shap_values respecitvely.
     n_top: int
         Number of shap_values to plot. Rest is aggregated to "... the rest" category.
-    multiclass_index: int
-        Which multiclass label should be printed.
 
     Returns
     -------
     Nothing
     """    
-
-    # Subset in case of multiclass
-    if multiclass_index is not None:
-        base_values = shap_values.base_values[:, multiclass_index]
-        values = shap_values.values[:, :, multiclass_index]
-    else:
-        base_values = shap_values.base_values
-        values = shap_values.values
 
     # Shap values to dataframe
     df_shap = (pd.concat([pd.DataFrame({"variable": "intercept",

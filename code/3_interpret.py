@@ -142,6 +142,7 @@ features = nume + cate
 model = pipe.fit(df_train[features], df_train[target_name])
 
 # Predict
+#%%
 if TARGET_TYPE in ["CLASS", "MULTICLASS"]:
     yhat_test = model.predict_proba(df_test[features])
     print(up.auc(df_test[target_name].values, yhat_test))
@@ -149,7 +150,7 @@ else:
     yhat_test = model.predict(df_test[features])
     print(up.spear(df_test[target_name].values, yhat_test))
 print(pd.DataFrame(yhat_test).describe())
-
+#%%
 # Plot performance
 if PLOT:
     d_calls = up.get_plotcalls_model_performance(y=df_test[target_name],
@@ -362,43 +363,49 @@ if PLOT:
     up.plot_l_calls(l_calls, pdf_path=f"{s.PLOTLOC}3__pd__{TARGET_TYPE}.pdf")
 
 
-# STILL NOT WORKING FOR MULTICLASS
-# --- Shap based PD ----------------------------------------------------------------------------------------------------
+# --- Shap-based PD ----------------------------------------------------------------------------------------------------
 
-# Get shap for test data
-explainer = shap.TreeExplainer(model[1].subestimator if hasattr(model[1], "subestimator") else model[1])
-shap_values = up.agg_shap_values(explainer(model[0].transform(X=df_test[features])),
-                                 df_test[features],
-                                 len_nume=len(nume), l_map_onehot=model[0].transformers_[1][1].categories_,
-                                 round=2)
+if TARGET_TYPE != "MULTICLASS":  # TODO: MULTICLASS
 
-# Rescale due to undersampling
-if TARGET_TYPE == "CLASS":
-    shap_values.base_values = logit(up.scale_predictions(expit(shap_values.base_values),
-                                                         model[1].b_sample_, model[1].b_all_))
-if TARGET_TYPE == "MULTICLASS":
-    shap_values.base_values = np.log(up.scale_predictions(np.exp(shap_values.base_values) /
-                                                          np.exp(shap_values.base_values).sum(axis=1, keepdims=True),
-                                                          model[1].b_sample_, model[1].b_all_))
-# Aggregate shap
-d_pd_shap = up.shap2pd(shap_values, features_top_test, df_ref=df_train)
+    # Get shap for test data
+    explainer = shap.TreeExplainer(model[1].subestimator if hasattr(model[1], "subestimator") else model[1])
+    shap_values = up.agg_shap_values(explainer(model[0].transform(X=df_test[features])),
+                                     df_test[features],
+                                     len_nume=len(nume), l_map_onehot=model[0].transformers_[1][1].categories_,
+                                     round=2)
 
+    # Rescale due to undersampling
+    if TARGET_TYPE == "CLASS":
+        shap_values.base_values = logit(up.scale_predictions(expit(shap_values.base_values),
+                                                             model[1].b_sample_, model[1].b_all_))
+    if TARGET_TYPE == "MULTICLASS":
+        shap_values.base_values = np.log(up.scale_predictions(np.exp(shap_values.base_values) /
+                                                              np.exp(shap_values.base_values).sum(axis=1, keepdims=True),
+                                                              model[1].b_sample_, model[1].b_all_))
+    # Aggregate shap
+    d_pd_shap = up.shap2pd(shap_values, features_top_test, df_ref=df_train)  # TODO: MULTICLASS
 
-# Plot it
-l_calls = list()
-for i, feature in enumerate(list(d_pd_shap.keys())):
-    i_col = {"REGR": 0, "CLASS": 1, "MULTICLASS": 2}
-    l_calls.append((up.plot_pd,
-                    dict(feature_name=feature,
-                         feature=d_pd_shap[feature]["value"],
-                         yhat=d_pd_shap[feature]["yhat"],  # on predictor level
-                         # TODO: still does not work with numeric features due to bin
-                         feature_ref=df_test[feature] if feature in cate else None,  
-                         refline=yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR" else yhat_test.mean(),
-                         ylim=None, color=s.COLORBLIND[i_col[TARGET_TYPE]])))
-if PLOT:
-    up.plot_l_calls(l_calls, pdf_path=f"{s.PLOTLOC}3__pd_shap__{TARGET_TYPE}.pdf")
+    # Transform to response level
+    if TARGET_TYPE == "CLASS":
+        d_pd_shap = {key: df.assign(yhat=lambda x: expit(x["yhat"])) for key, df in d_pd_shap.items()}
+    if TARGET_TYPE == "MULTICLASS":
+        pass  # TODO: MULTICLASS
 
+    # Plot it
+    l_calls = list()
+    for i, feature in enumerate(list(d_pd_shap.keys())):
+        i_col = {"REGR": 0, "CLASS": 1, "MULTICLASS": 2}
+        l_calls.append((up.plot_pd,
+                        dict(feature_name=feature,
+                             feature=d_pd_shap[feature]["value"],
+                             yhat=d_pd_shap[feature]["yhat"],  
+                             # feature_ref still does not work with numeric features due to non-bins in feature_ref
+                             feature_ref=df_test[feature] if feature in cate else None,  
+                             refline=(yhat_test[:, i_col[TARGET_TYPE]].mean() if TARGET_TYPE != "REGR"
+                                      else yhat_test.mean()),
+                             ylim=None, color=s.COLORBLIND[i_col[TARGET_TYPE]])))
+    if PLOT:
+        up.plot_l_calls(l_calls, pdf_path=f"{s.PLOTLOC}3__pd_shap__{TARGET_TYPE}.pdf")
 
 
 
@@ -422,10 +429,13 @@ yhat_explain = yhat_test[i_explain]
 explainer = shap.TreeExplainer(model[1].subestimator if hasattr(model[1], "subestimator") else model[1])
 X_explain = model[0].transform(X=df_explain[features])  # for lgbm might need: X_explain = X_explain.toarray()
 shap_values = explainer(X_explain)
+
+# Aggregate one-hot encodings to one shap value
 shap_values = up.agg_shap_values(explainer(model[0].transform(X=df_explain[features])),
                                  df_explain[features],
-                                 # TODO: make the following more robust
-                                 len_nume=len(nume), l_map_onehot=model[0].transformers_[1][1].categories_,
+                                 # TODO: make the following more robust as nume cols need to be at beginning of X
+                                 len_nume=len(nume), 
+                                 l_map_onehot=model[0].transformers_[1][1].categories_,
                                  round=2)  # aggregate onehot
 
 # Rescale due to undersampling
@@ -460,7 +470,7 @@ yhat_str = (format(yhat_explain[i, i_col[TARGET_TYPE]], ".3f") if TARGET_TYPE !=
             else format(yhat_explain[i], ".2f"))
 ax.set_title("id = " + str(df_explain[ID_NAME].iloc[i]) + " (y = " + y_str + ")" + r" ($\^y$ = " + yhat_str + ")")
 if TARGET_TYPE != "MULTICLASS":
-    shap.plots.waterfall(shap_values[i], show=True)  # TODO: replace "00"
+    shap.plots.waterfall(shap_values[i], show=True)  # TODO: replace "00" as it crashes otherwise
 else:
     shap.plots.waterfall(shap_values[i][:, df_explain[target_name].iloc[i]], show=True)
 '''
@@ -475,19 +485,18 @@ for i in range(len(df_explain)):
     yhat_str = (format(yhat_explain[i, i_col[TARGET_TYPE]], ".3f") if TARGET_TYPE != "REGR"
                 else format(yhat_explain[i], ".2f"))
     l_calls.append((up.plot_shap,
-                    dict(shap_values=shap_values,
+                    dict(shap_values=shap_values[:, :, i_col] if TARGET_TYPE == "MULTICLASS" else shap_values,
                          index=i,
                          id=df_explain[ID_NAME][i],
                          y_str=y_str,
-                         yhat_str=yhat_str,
-                         multiclass_index=None if TARGET_TYPE != "MULTICLASS" else i_col[TARGET_TYPE])))
+                         yhat_str=yhat_str)))
 if PLOT:
     up.plot_l_calls(l_calls, pdf_path=f"{s.PLOTLOC}3__shap__{TARGET_TYPE}.pdf")
 
 
 
 # ######################################################################################################################
-# Individual dependencies / Counterfactuals
+# Individual dependencies / Counterfactuals  / Ceteris Paribus
 # ######################################################################################################################
 
 # TODO

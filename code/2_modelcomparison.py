@@ -26,6 +26,8 @@ from tensorflow.keras.layers import Dense, BatchNormalization, Dropout
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras import optimizers
 from tensorflow.keras.wrappers.scikit_learn import KerasClassifier, KerasRegressor
+from pytorch_tabnet.tab_model import TabNetClassifier, TabNetRegressor
+import torch
 #  from sklearn.tree import DecisionTreeRegressor, plot_tree , export_graphviz
 
 # Custom functions and classes
@@ -37,7 +39,7 @@ import settings as s
 
 # --- Parameter --------------------------------------------------------------------------------------------------------
 
-TARGET_TYPE = "REGR"
+TARGET_TYPE = "CLASS"
 #for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 
 # Main parameter
@@ -180,6 +182,7 @@ fig.savefig(f"{s.PLOTLOC}2__tune_rforest__{TARGET_TYPE}.pdf")
 
 
 # --- XGBoost ----------------------------------------------------------------------------------------------------------
+
 start = time.time()
 fit = (up.GridSearchCV_xlgb(xgb.XGBRegressor(verbosity=0) if TARGET_TYPE == "REGR" else
                             xgb.XGBClassifier(verbosity=0),
@@ -226,28 +229,28 @@ fig = up.plot_cvresults(fit.cv_results_, metric=metric,
 fig.savefig(f"{s.PLOTLOC}2__tune_lgbm__{TARGET_TYPE}.pdf")
 
 
-
-'''
 # --- Tabnet ---------------------------------------------------------------------------------------------------------
-from pytorch_tabnet.tab_model import TabNetClassifier, TabNetRegressor
-import torch
 
-i_cate_encoded = [i for i in range(len(features_encoded)) if features_encoded[i].endswith("_ENCODED")]
-dim_cate_encoded = [len(np.unique(X_encoded[:, i])) for i in i_cate_encoded]
+# Indices of categorical variables and their cardinality 
 X_standard_dense = np.array(X_standard.todense())
 i_cate_standard = [i for i in range(len(nume_standard)) if nume_standard[i].endswith("_ENCODED")]
 dim_cate_standard = [len(np.unique(X_standard_dense[:, i])) for i in i_cate_standard]
 
-# Fit
+# Alterantive: pure encoded -> adapt fit call below
+#X_encoded_dense = X_encoded
+#i_cate_encoded = [i for i in range(len(features_encoded)) if features_encoded[i].endswith("_ENCODED")]
+#dim_cate_encoded = [len(np.unique(X_encoded_dense[:, i])) for i in i_cate_encoded]
 
+# Fit
 start = time.time()
-fit = (GridSearchCV(
-                    up.TabNet_gridsearch(TabNetRegressor(cat_idxs=i_cate_standard,  # i_cate_encoded/standard
-                                                          cat_dims=dim_cate_standard,  # dim_cate_encoded/standard
-                                                          mask_type="entmax",
-                                                          optimizer_params={"lr": 2e-2},
-                                                          scheduler_params={"step_size": 50, "gamma": 0.9},
-                                                          scheduler_fn=torch.optim.lr_scheduler.StepLR)),
+tabnet_param = dict(cat_idxs=i_cate_standard,  # i_cate_encoded/standard
+                    cat_dims=dim_cate_standard,  # dim_cate_encoded/standard
+                    mask_type="entmax",
+                    optimizer_params={"lr": 2e-2},
+                    scheduler_params={"step_size": 50, "gamma": 0.9},
+                    scheduler_fn=torch.optim.lr_scheduler.StepLR)
+fit = (GridSearchCV(up.TabNetcustom(TabNetRegressor(**tabnet_param)) if TARGET_TYPE == "REGR" else
+                    up.TabNetcustom(TabNetClassifier(**tabnet_param)),
                     {"max_epochs": [x for x in range(50, 550, 100)], 
                      "batch_size": [128 * 8],
                      "patience": [50],
@@ -257,14 +260,12 @@ fit = (GridSearchCV(
                     scoring=scoring,
                     return_train_score=True,
                     n_jobs=s.N_JOBS)
-       .fit(X_standard_dense,  #X_encoded/standard_dense
-            y=df_tune[target_name].values.reshape(-1,1)))
+       .fit(X_standard_dense,  #X_encoded_dense/standard_dense
+            y=df_tune[target_name].values.reshape(-1,1) if TARGET_TYPE=="REGR" else df_tune[target_name]))
 print(time.time() - start)
-
 fig = up.plot_cvresults(fit.cv_results_, show_gap=False, metric=metric,
                         x_var="max_epochs", color_var="batch_size", column_var="cat_emb_dim")
 fig.savefig(f"{s.PLOTLOC}2__tune_tabnet__{TARGET_TYPE}.pdf")
-'''
 
 
 # --- DeepL ------------------------------------------------------------------------------------------------------------
