@@ -3450,10 +3450,10 @@ def plot_shap(ax, shap_values, index, id,
     # Shap values to dataframe
     df_shap = (pd.concat([pd.DataFrame({"variable": "intercept",
                                         "variable_value": np.nan,
-                                        "shap": base_values[index]}, index=[0]),
+                                        "shap": shap_values.base_values[index]}, index=[0]),
                           pd.DataFrame({"variable": shap_values.feature_names[index],
                                         "variable_value": shap_values.data[index],
-                                        "shap": values[index]})
+                                        "shap": shap_values.values[index]})
                           .assign(tmp=lambda x: x["shap"].abs())
                           .sort_values("tmp", ascending=False)
                           .drop(columns="tmp")])

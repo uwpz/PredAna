@@ -35,7 +35,7 @@ import settings as s
 # --- Parameter --------------------------------------------------------------------------------------------------------
 
 # Constants
-TARGET_TYPE = "MULTICLASS"
+TARGET_TYPE = "CLASS"
 #for TARGET_TYPE in ["CLASS", "REGR", "MULTICLASS"]:
 ID_NAME = "instant"
 IMPORTANCE_CUM_THRESHOLD = 98
@@ -47,7 +47,7 @@ metric = "spear" if TARGET_TYPE == "REGR" else "auc"
 scoring = up.D_SCORER[TARGET_TYPE]
 
 # Plot
-PLOT = False
+PLOT = True
 %matplotlib
 plt.ioff() 
 # %matplotlib | %matplotlib qt | %matplotlib inline  # activate standard/inline window
@@ -309,7 +309,7 @@ if PLOT:
 ########################################################################################################################
 
 '''
-# Scikit's partial dependence example
+# Scikit's partial dependence example (has also plot functionality)
 
 # cate
 cate_top_test = up.diff(features_top_test, nume)
@@ -460,7 +460,7 @@ else:
                      model.predict_proba(df_explain[features])))
 
 '''
-# Plot default waterfall
+# Shap's default waterfall plot
 fig, ax = plt.subplots(1, 1)
 i = 1
 i_col = {"CLASS": 1, "MULTICLASS": df_explain[target_name].iloc[i]}
@@ -476,7 +476,6 @@ else:
 '''
 
 # Plot it
-# TODO: move multiclass index out of function
 l_calls = list()
 for i in range(len(df_explain)):
     y_str = (str(df_explain[target_name].iloc[i]) if TARGET_TYPE != "REGR"
@@ -485,7 +484,8 @@ for i in range(len(df_explain)):
     yhat_str = (format(yhat_explain[i, i_col[TARGET_TYPE]], ".3f") if TARGET_TYPE != "REGR"
                 else format(yhat_explain[i], ".2f"))
     l_calls.append((up.plot_shap,
-                    dict(shap_values=shap_values[:, :, i_col] if TARGET_TYPE == "MULTICLASS" else shap_values,
+                    dict(shap_values=(shap_values[:, :, i_col[TARGET_TYPE]] if TARGET_TYPE == "MULTICLASS" 
+                                      else shap_values),
                          index=i,
                          id=df_explain[ID_NAME][i],
                          y_str=y_str,
