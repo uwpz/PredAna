@@ -174,15 +174,15 @@ pipeline = Pipeline([
     ('etl', pipe_etl),
     ('fe', ColumnTransformer(transformers=[
         ('nume', pipe_numerical, nume + yesno + up.add(toomany, "_ENCODED")),
-        ('cate', pipe_categorical, nomi + ordi)  
+        ('cate', pipe_categorical, nomi + ordi)
     ])),
     ('algo', up.UndersampleEstimator(xgb.XGBRegressor(**dict(n_estimators=1100, learning_rate=0.01,
-                                                              max_depth=3, min_child_weight=10,
-                                                              colsample_bytree=0.7, subsample=0.7,
-                                                              gamma=0,
-                                                              verbosity=0,
-                                                              n_jobs=s.N_JOBS,
-                                                              use_label_encoder=False)),
+                                                             max_depth=3, min_child_weight=10,
+                                                             colsample_bytree=0.7, subsample=0.7,
+                                                             gamma=0,
+                                                             verbosity=0,
+                                                             n_jobs=s.N_JOBS,
+                                                             use_label_encoder=False)),
                                      n_max_per_level=2000))
 ])
 

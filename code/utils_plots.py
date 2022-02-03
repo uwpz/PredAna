@@ -30,6 +30,7 @@ from sklearn.base import BaseEstimator, TransformerMixin, clone  # ClassifierMix
 import xgboost as xgb
 import lightgbm as lgbm
 from itertools import product  # for GridSearchCV_xlgb
+from pytorch_tabnet.tab_model import TabNetRegressor
 
 # Other
 from scipy.interpolate import splev, splrep
@@ -188,14 +189,20 @@ def plot_l_calls(l_calls, n_cols=2, n_rows=2, figsize=(16, 10), pdf_path=None, c
 
 def reduce2prob(yhat):
     """ Reduce prediction matrix to 1-dim-array comprising probability of "1"-class """
-    if (yhat.ndim == 2) and (yhat.shape[1] == 2):
-        return yhat[:, 1]
+    if (yhat.ndim == 2):
+        if (yhat.shape[1] == 2):  # 2-dim array or matrix, so classification
+            return yhat[:, 1]
+        elif (yhat.shape[1] == 1):  # 1-dim matrix, so regression
+            return yhat[:, 0]
+        else:
+            return yhat  # multiclass
     else:
-        return yhat
+        return yhat  # regression or classification
 
 
 def spear(y, yhat) -> float:
     """ Spearman correlation (working also for classification tasks) """
+    y = reduce2prob(y)
     yhat = reduce2prob(yhat)  # Catch classification case
     spear = pd.DataFrame({"y": y, "yhat": yhat}).corr(method="spearman").values[0, 1]
     return spear
@@ -634,6 +641,7 @@ def _helper_inner_barplot_rotated(ax, x, y, inset_size=0.2):
     if len(xticks) > len(y):
         _ = inset_ax.set_xticks(xticks[1::2])
     _ = ax.set_yticks(yticks[(yticks >= ylim[0]) & (yticks <= ylim[1])])
+     
 
 
 def plot_cate_CLASS(ax,
@@ -733,8 +741,9 @@ def plot_cate_MULTICLASS(ax,
                          title=None,
                          add_miss_info=True,
                          color=list(sns.color_palette("colorblind").as_hex()),
-                         reverse=False,
-                         exchange_x_y_axis=False,
+                         reverse_feature=False,
+                         reverse_target=False,
+                         vbar=False,
                          verbose=True):
     """
     Plots categorical feature vs multiclass target (as segemented bars).
@@ -765,9 +774,11 @@ def plot_cate_MULTICLASS(ax,
         Show percentage of missings in feature's axis label.
     color: list
         List of colors assigned to target's categories.
-    reverse: boolean
-        Should bar segments be reversed?
-    exchange_x_y_axis: boolean
+    reverse_feature: boolean
+        Should feature categories be reversed?
+    reverse_target: boolean
+        Should target categories be reversed?
+    vbar: boolean
         Should default horizontal bars on y-Axis be plotted as vertical bars on x-Axis?
     verbose: Boolean
         Print processing information.
@@ -787,14 +798,20 @@ def plot_cate_MULTICLASS(ax,
     # Prepare data
     df_plot = _helper_calc_barboxwidth(feature, target, min_width=min_width)
 
-    # Reverse
-    if reverse:
+    # Reverse feature
+    if reverse_feature:
         df_plot = df_plot.iloc[::-1]
-
+        
+    # Reverse target
+    target_categories = list(np.sort(target.unique()))
+    if reverse_target:
+        target_categories = target_categories[::-1]   
+        color = color[(len(target_categories)-1)::-1]
+                      
     # Segmented barplot
     offset = np.zeros(len(df_plot))
-    for m, member in enumerate(np.sort(target.unique())):
-        if not exchange_x_y_axis:
+    for m, member in enumerate(target_categories):
+        if not vbar:
             ax.barh(y=df_plot[feature.name + "_fmt"], width=df_plot[member], height=df_plot["w"],
                     left=offset,
                     color=color[m], label=member, edgecolor="black", alpha=0.5, linewidth=1)
@@ -807,10 +824,12 @@ def plot_cate_MULTICLASS(ax,
     ax.set_title(title)
 
     # Inner barplot
-    if not exchange_x_y_axis:
+    if not vbar:
         _helper_inner_barplot(ax, x=df_plot[feature.name + "_fmt"], y=df_plot["pct"], inset_size=inset_size)
     else:
-        _helper_inner_barplot_rotated(ax, x=df_plot[feature.name + "_fmt"], y=df_plot["pct"], inset_size=inset_size)
+        #ax.set_xticklabels(labels=ax.get_xticklabels(), rotation=45)
+        _helper_inner_barplot_rotated(ax, x=df_plot[feature.name + "_fmt"], y=df_plot["pct"], 
+                                      inset_size=inset_size)
 
     # Missing information
     if add_miss_info:
@@ -1637,7 +1656,7 @@ class GridSearchCV_xlgb(GridSearchCV):
         # Materialize generator as this cannot be pickled for parallel
         self.cv = list(check_cv(self.cv, y).split(X))
 
-        # TODO: Iterate in parallel also over splits (see original fit method)
+        # Process in parallel
         def run_in_parallel(i):
             # for i in range(len(df_param_grid)):
 
@@ -1968,7 +1987,7 @@ def scale_predictions(yhat, b_sample=None, b_all=None):
         Predictions to rescale.
     b_sample: numpy array
         Base rate of undersampled data.
-    b_all: list or None
+    b_all: numpy array
         Base rate of "orignal"" data, i.e. to which the undersampled yhat should be rescaled.
 
     Returns
@@ -2049,9 +2068,11 @@ class ScalingEstimator(BaseEstimator):
 
     def predict(self, X, *args, **kwargs):
         print("")
+        # Binary prediction
         if self._estimator_type == "classifier":
             yhat = self.classes_[np.argmax(self.predict_proba(X, *args, **kwargs), 
                                            axis=1)]
+        # Regression
         else:
             yhat = self.subestimator.predict(X, *args, **kwargs)
         return yhat
@@ -2089,6 +2110,84 @@ class XGBClassifier_rescale(xgb.XGBClassifier):
         yhat = scale_predictions(super().predict_proba(X, *args, **kwargs),
                                  b_sample=self.b_sample, b_all=self.b_all)
         return yhat
+
+
+
+class TabNetcustom(BaseEstimator):
+    """
+    Metaestimator which allows TabNet models to tune also "fit" parameter.
+
+    Parameters
+    ----------
+    subestimator: TabNetRegressor or TabNetClassifier instance(!)
+        Instance of a TabNet estimator, e.g. TabNetClassifier().
+    batch_size: int, default=1024
+        TabNet's fit paramter batch_size.
+    max_epochs: int, default=200
+        TabNet's fit paramter max_epochs.
+    patience: int, default=15
+        TabNet's fit paramter patience.
+    **kwargs: dict
+        All parameters available for subestimator
+
+    Attributes
+    ----------
+    classes_: array of unique target labels.
+    fitted_: boolean, denoting whether instance is fitted.
+
+    """
+    def __init__(self, subestimator, batch_size=1024, max_epochs=200, patience=15, **kwargs):
+        self.subestimator = subestimator
+        self.batch_size = batch_size
+        self.max_epochs = max_epochs
+        self.patience = patience
+        if isinstance(self.subestimator, TabNetRegressor):
+            self._estimator_type = "regressor"  
+        else:
+            self._estimator_type = "classifier"
+        if kwargs:
+            self.subestimator.set_params(**kwargs)
+     
+    def get_params(self, deep=True):
+        return dict(subestimator=self.subestimator,
+                    batch_size=self.batch_size,
+                    max_epochs=self.max_epochs,
+                    patience=self.patience,
+                    **self.subestimator.get_params())  
+
+    def set_params(self, **params):
+        if "subestimator" in params:
+            self.subestimator = params["subestimator"]
+            del params["subestimator"]
+        if "batch_size" in params:
+            self.batch_size = params["batch_size"]
+            del params["batch_size"]
+        if "max_epochs" in params:
+            self.max_epochs = params["max_epochs"]
+            del params["max_epochs"]
+        if "patience" in params:
+            self.b_all = params["patience"]
+            del params["patience"]
+        self.subestimator = self.subestimator.set_params(**params)
+        return self
+
+    def fit(self, X, y, *args, **kwargs):
+        if self._estimator_type == "classifier":
+            self.classes_ = unique_labels(y)
+                            
+        # Fit
+        self.subestimator.fit(X, y, *args,
+                              batch_size=self.batch_size, max_epochs=self.max_epochs, patience=self.patience,
+                              **kwargs)
+        self.fitted_ = True  # "dummy" (can be any xxx_) attribute for scikit to recognize estimator is fitted
+        return self
+
+    def predict(self, X, *args, **kwargs):
+        return self.subestimator.predict(X, *args, **kwargs)
+
+    def predict_proba(self, X, *args, **kwargs):
+        return self.subestimator.predict_proba(X, *args, **kwargs)
+
 
 
 class UndersampleEstimator(BaseEstimator):
@@ -2142,7 +2241,8 @@ class UndersampleEstimator(BaseEstimator):
 
     def fit(self, X, y, *args, **kwargs):
         if self._estimator_type == "classifier":
-            self._classes = self.subestimator._classes
+            self.classes_ = unique_labels(y)
+            #self.classes_ = self.subestimator.classes_
         # Sample and set b_sample_, b_all_
         if type_of_target(y) == "continuous":
             df_tmp = (pd.DataFrame(dict(y=y)).reset_index(drop=True).reset_index()
@@ -2159,7 +2259,7 @@ class UndersampleEstimator(BaseEstimator):
         X_under = X[df_tmp["index"].values, :]
         
         # Denote that it is fitted
-        self.fitted_ = True
+        self.fitted_ = True  # "dummy" (can be any xxx_) attribute for scikit to recognize estimator is fitted
 
         # Fit
         self.subestimator.fit(X_under, y_under, *args, **kwargs)
@@ -2167,9 +2267,11 @@ class UndersampleEstimator(BaseEstimator):
 
     def predict(self, X, *args, **kwargs):
         print("")
+        # Binary prediction
         if self._estimator_type == "classifier":
             yhat = self.classes_[np.argmax(self.predict_proba(X, *args, **kwargs), 
                                            axis=1)]
+        # Regression
         else:
             yhat = self.subestimator.predict(X, *args, **kwargs)
         return yhat
@@ -2278,13 +2380,14 @@ def variable_importance(estimator, df, y, features, scorer, target_type=None,
     df: Pandas dataframe
         Dataframe for which to calculate importance, usually training or test data.
     y: Numpy array or Pandas series
-        Target variable.
+        Target variable, needed to calcuate score
     features: list
         List of features for which to calculate importance.
+    scorer: sklearn.metrics scorer 
+        Metric which is the basis to calcuate importance
     target_type: str
         Can be "CLASS" or "MULTICLASS" or "REGR". If not specified the type is detected automatically from y. 
         So this automatism can be overridden.
-    scorer: sklearn.metrics scorer 
     n_jobs: int
         Number of parallel processes used. Each feature importance is calculated in parallel by its own 
         process.
@@ -2303,18 +2406,20 @@ def variable_importance(estimator, df, y, features, scorer, target_type=None,
 
     # Performance per variable after permutation
     np.random.seed(random_state)
-    i_perm = np.random.permutation(np.arange(len(df)))  # permutation vector
+    i_perm = np.random.permutation(np.arange(len(df)))  # permutation vector, so permute each feature the same way
 
     def run_in_parallel(df, feature):
-        #feature = features[0]
         df_copy = df.copy()
-        df_copy[feature] = df_copy[feature].values[i_perm]
+        df_copy[feature] = df_copy[feature].values[i_perm]  # permute
         yhat_perm = estimator.predict(df_copy) if target_type == "REGR" else estimator.predict_proba(df_copy)
         score = scorer._score_func(y, yhat_perm)
         return score
     scores = Parallel(n_jobs=n_jobs, max_nbytes='100M')(delayed(run_in_parallel)(df, feature)
                                                         for feature in features)
-    return varimp2df({"importances_mean": score_orig - scores}, features)
+    
+    # Calc performance diff, i.e. importance
+    df_varimp = varimp2df({"importances_mean": score_orig - scores}, features)
+    return df_varimp
 
 
 def partial_dependence(estimator, df, features,
@@ -2344,35 +2449,35 @@ def partial_dependence(estimator, df, features,
     -------
     Dataframe with patial depdence information
     """
+    # Set reference data
     if df_ref is None:
         df_ref = df
 
-    def run_in_parallel(feature):
+    # Calc partial dependence
+    def run_in_parallel(feature, df, df_ref):
+        
+        # Derive value grid for which dependence is calculated
         if pd.api.types.is_numeric_dtype(df_ref[feature]):
             values = np.unique(df_ref[feature].quantile(quantiles).values)
         else:
             values = df_ref[feature].unique()
 
+        # Loop over value grid and calc dependence
         df_copy = df.copy()  # save original data
-
-        #yhat_pd = np.array([]).reshape(0, 1 if estimator._estimator_type == "regressor" else len(estimator.classes_))
-        df_return = pd.DataFrame()
+        df_pd_feature = pd.DataFrame()
         for value in values:
             df_copy[feature] = value
-            df_return = df_return.append(
+            df_pd_feature = df_pd_feature.append(
                 pd.DataFrame(np.mean(estimator.predict_proba(df_copy) if estimator._estimator_type == "classifier" else
                                      estimator.predict(df_copy), axis=0).reshape(1, -1)))
-        # yhat_pd = np.append(yhat_pd,
-        #                     np.mean(estimator.predict_proba(df_pd) if estimator._estimator_type == "classifier" else
-        #                             estimator.predict(df_pd), axis=0).reshape(1, -1), axis=0)
-        df_return.columns = ["yhat"] if estimator._estimator_type == "regressor" else estimator.classes_
-        df_return["value"] = values
-        df_return = df_return.reset_index(drop=True)
+        df_pd_feature.columns = ["yhat"] if estimator._estimator_type == "regressor" else estimator.classes_
+        df_pd_feature["value"] = values
+        df_pd_feature = df_pd_feature.reset_index(drop=True)
 
-        return df_return
+        return df_pd_feature
 
     # Run in parallel and append
-    l_pd = (Parallel(n_jobs=n_jobs, max_nbytes='100M')(delayed(run_in_parallel)(feature)
+    l_pd = (Parallel(n_jobs=n_jobs, max_nbytes='100M')(delayed(run_in_parallel)(feature, df, df_ref)
                                                        for feature in features))
     d_pd = dict(zip(features, l_pd))
     return d_pd
@@ -2417,24 +2522,23 @@ def shap2pd(shap_values, features,
                                    format(bin_edges[0][i], format_string) + " - " +
                                    format(bin_edges[0][i + 1], format_string) + ")"
                                    for i in range(len(bin_edges[0]) - 1)])
-            df_shap = pd.DataFrame({"value": bin_labels[(kbinsdiscretizer_fit
+            df_shap = pd.DataFrame({"yhat": shap_values.values[:, i_feature],
+                                    "value": bin_labels[(kbinsdiscretizer_fit
                                                          .transform(shap_values.data[:, [i_feature]])[:, 0])
-                                                        .astype(int)],
-                                    "yhat": shap_values.values[:, i_feature]})  # TODO: MULTICLASS
+                                                        .astype(int)]})  # TODO: MULTICLASS
 
         # Categorical feature
         else:
-            df_shap = pd.DataFrame({"value": shap_values.data[:, i_feature],
-                                    "yhat": shap_values.values[:, i_feature]})  # TODO: MULTICLASS
+            df_shap = pd.DataFrame({"yhat": shap_values.values[:, i_feature],
+                                    "value": shap_values.data[:, i_feature]})  # TODO: MULTICLASS
 
         # Aggregate and add intercept
         df_shap_agg = (df_shap.groupby("value").mean().reset_index()
-                       .assign(yhat=lambda x: x["yhat"] + intercept))
+                       .assign(yhat=lambda x: x["yhat"] + intercept))  # TODO: MULTICLASS
         d_pd[feature] = df_shap_agg
     return d_pd
 
 
-# TODO: remove len_nume paramter and make it flexible
 def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
     """
     # Aggregate onehot encoded shapely values
@@ -2446,7 +2550,7 @@ def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
     df_explain: Pandas dataframe 
         Dataframe used to create matrix which is send to shap explainer.
     len_nume: int
-        Number of numerical features building first columns of df_explain.
+        Number of numerical features building first columns (!) of df_explain.
     l_map_onehot: list
         Attribute categories_ of used onehot-encoder (or similar list).
     round: int
@@ -2492,12 +2596,12 @@ def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
 
 # --- Plots ------------------------------------------------------------------------------------------------------------
 
-def plot_roc(ax, y, yhat,
+def plot_roc(ax, y, yhat, annotate=True, fontsize=10,
              color=list(sns.color_palette("colorblind").as_hex()), 
              target_labels=None):
     """
     Plot roc curve. Also capable of Multiclass data, plotting OvR (one-vs-rest) roc curves. Additionally capable
-    of Regression data, allowin concordance interprtation.
+    of Regression data, allowing concordance interpretation.
         
     Parameters
     ----------
@@ -2507,6 +2611,10 @@ def plot_roc(ax, y, yhat,
         Target.
     yhat: Numpy array or Pandas series
         Predictions.
+    annotate: boolean
+        Annotate curve with threshold values.
+    fontsize: int
+        Fontsize of annotations.
     color: list
         Colors used for Multiclass roc curves.
     target_labels: list
@@ -2517,7 +2625,7 @@ def plot_roc(ax, y, yhat,
     Nothing
     """
 
-    # also for regression
+    # Also for regression: squeeze between 0 and 1
     if (y.ndim == 1) & (yhat.ndim == 1):
         if (np.min(y) < 0) | (np.max(y) > 1):
             y = MinMaxScaler().fit_transform(y.reshape(-1, 1))[:, 0]
@@ -2526,17 +2634,29 @@ def plot_roc(ax, y, yhat,
 
     # CLASS (and regression)
     if yhat.ndim == 1:
+        
         # Roc curve
-        fpr, tpr, _ = roc_curve(y, yhat)
+        fpr, tpr, cutoff = roc_curve(y, yhat)
+        cutoff[0] = 1
         roc_auc = roc_auc_score(y, yhat)
-        # sns.lineplot(fpr, tpr, ax=ax, palette=sns.xkcd_palette(["red"]))
-        ax.plot(fpr, tpr)
+        ax.plot(fpr, tpr)  # sns.lineplot(fpr, tpr, ax=ax, palette=sns.xkcd_palette(["red"]))        
         ax.set_title(f"ROC (AUC = {roc_auc:0.2f})")
+        
+        # Annotate text
+        if annotate:
+            for thres in np.arange(0.1, 1, 0.1):
+                i_thres = np.argmax(cutoff < thres)
+                ax.annotate(f"{thres:0.1f}", (fpr[i_thres], tpr[i_thres]), fontsize=fontsize)
 
     # MULTICLASS
     else:
+        
+        # OvR (one-vs-rest) auc calculation
         n_classes = yhat.shape[1]
-        aucs = np.array([round(roc_auc_score(np.where(y == i, 1, 0), yhat[:, i]), 2) for i in np.arange(n_classes)])
+        aucs = np.array([round(roc_auc_score(np.where(y == i, 1, 0), 
+                                             yhat[:, i]), 2) for i in np.arange(n_classes)])  
+        
+        # Roc curves
         for i in np.arange(n_classes):
             y_bin = np.where(y == i, 1, 0)
             fpr, tpr, _ = roc_curve(y_bin, yhat[:, i])
@@ -2545,12 +2665,15 @@ def plot_roc(ax, y, yhat,
             else:
                 new_label = str(i) + " (" + str(aucs[i]) + ")"
             ax.plot(fpr, tpr, color=color[i], label=new_label)
+            
+        # Title and legend
         mean_auc = np.average(aucs).round(3)
         weighted_auc = np.average(aucs, weights=np.array(np.unique(y, return_counts=True))[1, :]).round(3)
         ax.set_title("ROC\n" + r"($AUC_{mean}$ = " + str(mean_auc) + r", $AUC_{weighted}$ = " +
                      str(weighted_auc) + ")")
         ax.legend(title=r"Target ($AUC_{OvR}$)", loc='best')
 
+    # Axis labels
     ax.set_xlabel(r"fpr: P($\^y$=1|$y$=0)")
     ax.set_ylabel(r"tpr: P($\^y$=1|$y$=1)")
 
@@ -2612,12 +2735,11 @@ def plot_calibration(ax, y, yhat, n_bins=5,
     ax.set_xlim(None, maxmax + 0.05 * (maxmax - minmin))
     ax.set_ylim(None, maxmax + 0.05 * (maxmax - minmin))
 
-    # Labels
+    # Labels and legend
     props = {'xlabel': r"$\bar{\^y}$ in $\^y$-bin",
              'ylabel': r"$\bar{y}$ in $\^y$-bin",
              'title': "Calibration"}
     _ = ax.set(**props)
-
     if yhat.ndim > 1:
         ax.legend(title="Target", loc='best')
 
@@ -2645,7 +2767,7 @@ def plot_confusion(ax, y, yhat, threshold=0.5, cmap="Blues", target_labels=None)
     -------
     Nothing
     """
-    # binary label
+    # Binary label
     if yhat.ndim == 1:
         yhat_bin = np.where(yhat > threshold, 1, 0)
     else:
@@ -2671,7 +2793,7 @@ def plot_confusion(ax, y, yhat, threshold=0.5, cmap="Blues", target_labels=None)
     # accuracy and confusion calculation
     acc = accuracy_score(y, yhat_bin)
 
-    # plot
+    # "Plot" dataframe as heatmap
     sns.heatmap(df_conf, annot=True, fmt=".5g", cmap=cmap, ax=ax,
                 xticklabels=True, yticklabels=True, cbar=False)
     ax.set_yticklabels(labels=ylabels, rotation=0)
@@ -2687,8 +2809,7 @@ def plot_confusion(ax, y, yhat, threshold=0.5, cmap="Blues", target_labels=None)
         text.set_weight('bold')
 
 
-# TODO: adapt type to boolean
-def plot_confusionbars(ax, y, yhat, type, target_labels=None):
+def plot_confusionbars(ax, y, yhat, y_as_category=True, target_labels=None):
     """
     Plot confusion bars. 
         
@@ -2700,8 +2821,8 @@ def plot_confusionbars(ax, y, yhat, type, target_labels=None):
         Target.
     yhat: Numpy array or Pandas series
         Predictions.
-    type: str
-        If "True" use y (true labels) as categories.
+    y_as_category: boolean
+        If True use y (true labels) as categories. Otherwise use yhat.
     target_labels: list
         Descriptive labels used for axis.
         
@@ -2711,7 +2832,7 @@ def plot_confusionbars(ax, y, yhat, type, target_labels=None):
     """
     n_classes = yhat.shape[1]
 
-    # Make series
+    # Make y and yhat series
     y = pd.Series(y, name="y").astype(str)
     yhat = pd.Series(yhat.argmax(axis=1), name="yhat").astype(str)
 
@@ -2722,10 +2843,10 @@ def plot_confusionbars(ax, y, yhat, type, target_labels=None):
         yhat = yhat.map(d_map)
 
     # Plot and adapt
-    if type == "true":
-        plot_cate_MULTICLASS(ax, feature=y, target=yhat, reverse=True)
+    if y_as_category:
+        plot_cate_MULTICLASS(ax, feature=y, target=yhat, reverse_feature=True)
     else:
-        plot_cate_MULTICLASS(ax, feature=yhat, target=y, exchange_x_y_axis=True)
+        plot_cate_MULTICLASS(ax, feature=yhat, target=y, vbar=True, reverse_target=True)
     ax.set_xlabel("% Predicted label")
     ax.set_ylabel("True label")
     ax.set_title("")
@@ -2751,13 +2872,15 @@ def plot_multiclass_metrics(ax, y, yhat, target_labels=None):
     -------
     Nothing
     """
+    
+    # Calculate metrics
     m_conf = confusion_matrix(y, yhat.argmax(axis=1))
     aucs = np.array([round(roc_auc_score(np.where(y == i, 1, 0), yhat[:, i]), 2) for i in np.arange(yhat.shape[1])])
     prec = np.round(np.diag(m_conf) / m_conf.sum(axis=0) * 100, 1)
     rec = np.round(np.diag(m_conf) / m_conf.sum(axis=1) * 100, 1)
     f1 = np.round(2 * prec * rec / (prec + rec), 1)
 
-    # Top3 metrics
+    # Add top3 metrics
     if target_labels is None:
         target_labels = np.unique(y).tolist()
     df_metrics = (pd.DataFrame(np.column_stack((y, np.flip(np.argsort(yhat, axis=1), axis=1)[:, :3])),
@@ -2770,6 +2893,8 @@ def plot_multiclass_metrics(ax, y, yhat, target_labels=None):
                   .groupby(["label"])["acc_top1", "acc_top2", "acc_top3"].agg("mean").round(2)
                   .join(pd.DataFrame(np.stack((aucs, rec, prec, f1), axis=1),
                                      index=target_labels, columns=["auc", "recall", "precision", "f1"])))
+    
+    # "Plot" df_metrics as heatmap without color
     sns.heatmap(df_metrics.T, annot=True, fmt=".5g",
                 cmap=ListedColormap(['white']), linewidths=2, linecolor="black", cbar=False,
                 ax=ax, xticklabels=True, yticklabels=True)
@@ -2803,19 +2928,19 @@ def plot_precision_recall(ax, y, yhat, annotate=True, fontsize=10):
     Nothing
     """
 
-    # precision recall calculation
+    # Calculate precision recall
     prec, rec, cutoff = precision_recall_curve(y, yhat)
     cutoff = np.append(cutoff, 1)
     prec_rec_auc = average_precision_score(y, yhat)
 
-    # plot
+    # Plot curve
     ax.plot(rec, prec)
     props = {'xlabel': r"recall=tpr: P($\^y$=1|$y$=1)",
              'ylabel': r"precision: P($y$=1|$\^y$=1)",
              'title': f"Precision Recall Curve (AUC = {prec_rec_auc:0.2f})"}
     ax.set(**props)
 
-    # annotate text
+    # Annotate text
     if annotate:
         for thres in np.arange(0.1, 1, 0.1):
             i_thres = np.argmax(cutoff > thres)
@@ -2844,22 +2969,21 @@ def plot_precision(ax, y, yhat, annotate=True, fontsize=10):
     Nothing
     """
 
-    # precision calculation
+    # Calculate precision and pct_tested (percentage tested)
     pct_tested = np.array([])
     prec, _, cutoff = precision_recall_curve(y, yhat)
     cutoff = np.append(cutoff, 1)
     for thres in cutoff:
         pct_tested = np.append(pct_tested, [np.sum(yhat >= thres) / len(yhat)])
 
-    # plot
-    #sns.lineplot(pct_tested, prec[:-1], ax=ax, palette=sns.xkcd_palette(["red"]))
-    ax.plot(pct_tested, prec)
+    # Plot curve    
+    ax.plot(pct_tested, prec)  #sns.lineplot(pct_tested, prec[:-1], ax=ax, palette=sns.xkcd_palette(["red"]))
     props = {'xlabel': "% Samples Tested",
              'ylabel': r"precision: P($y$=1|$\^y$=1)",
              'title': "Precision Curve"}
     ax.set(**props)
 
-    # annotate text
+    # Annotate text
     if annotate:
         for thres in np.arange(0.1, 1, 0.1):
             i_thres = np.argmax(cutoff > thres)
@@ -2887,7 +3011,7 @@ def get_plotcalls_model_performance_CLASS(y, yhat,
     cmap: str
         Cmap of heatmap plot.
     annotate: boolean
-        Annotate curves with precision recall values.
+        Annotate curves with threshold values.
     fontsize: int
         Fontsize of annotations.
         
@@ -2895,13 +3019,13 @@ def get_plotcalls_model_performance_CLASS(y, yhat,
     -------
     Dictionary with plot calls
     """
-    # yhat to 1-dim
+    # Convert yhat to 1-dim
     if ((yhat.ndim == 2) and (yhat.shape[1] == 2)):
         yhat = yhat[:, 1]
 
     # Define plot dict
     d_calls = dict()
-    d_calls["roc"] = (plot_roc, dict(y=y, yhat=yhat))
+    d_calls["roc"] = (plot_roc, dict(y=y, yhat=yhat, annotate=annotate, fontsize=fontsize))
     d_calls["confusion"] = (plot_confusion, dict(y=y, yhat=yhat, threshold=threshold, cmap=cmap))
     d_calls["distribution"] = (plot_nume_CLASS, dict(feature=yhat, target=y, feature_lim=(0, 1),
                                                      feature_name=r"Predictions ($\^y$)",
@@ -2946,9 +3070,9 @@ def get_plotcalls_model_performance_MULTICLASS(y, yhat,
     d_calls["roc"] = (plot_roc, dict(y=y, yhat=yhat, target_labels=target_labels))
     d_calls["confusion"] = (plot_confusion, dict(y=y, yhat=yhat, threshold=None, cmap=cmap,
                                                  target_labels=target_labels))
-    d_calls["true_bars"] = (plot_confusionbars, dict(y=y, yhat=yhat, type="true", target_labels=target_labels))
+    d_calls["true_bars"] = (plot_confusionbars, dict(y=y, yhat=yhat, y_as_category=True, target_labels=target_labels))
     d_calls["calibration"] = (plot_calibration, dict(y=y, yhat=yhat, n_bins=n_bins, target_labels=target_labels))
-    d_calls["pred_bars"] = (plot_confusionbars, dict(y=y, yhat=yhat, type="pred", target_labels=target_labels))
+    d_calls["pred_bars"] = (plot_confusionbars, dict(y=y, yhat=yhat, y_as_category=False, target_labels=target_labels))
     d_calls["multiclass_metrics"] = (plot_multiclass_metrics, dict(y=y, yhat=yhat, target_labels=target_labels))
 
     return d_calls
@@ -2977,7 +3101,7 @@ def get_plotcalls_model_performance_REGR(y, yhat,
     -------
     Dictionary with plot calls
     """
-    # yhat to 1-dim
+    # Convert yhat to 1-dim
     if ((yhat.ndim == 2) and (yhat.shape[1] == 2)):
         yhat = yhat[:, 1]
 
@@ -3119,7 +3243,7 @@ def plot_variable_importance(ax,
         Cumulated importance of features, used for overlayed line plot.
     importance_mean: Numpy array or Pandas series
         Mean importance of features, used for overlayed marker plot.        
-    importance_mean: Numpy array or Pandas series
+    importance_error: Numpy array or Pandas series
         Error of mean importance of features, used for overlayed error lines added to markers.  
     max_score_diff: float
         Optional information which informs what an importance of 100 means in terms of score difference.
@@ -3284,12 +3408,12 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
                         linestyle="none", marker="s", capsize=5, fillstyle="none", color="grey")
 
 
-# TODO: change color to tuple
 def plot_shap(ax, shap_values, index, id,
               y_str=None, yhat_str=None,
               show_intercept=True, show_prediction=True,
               shap_lim=None,
-              color=["blue", "red"], n_top=10, multiclass_index=None):
+              color=("blue", "red"), 
+              n_top=10):
     """
     # Plot shapley values.
 
@@ -3313,33 +3437,23 @@ def plot_shap(ax, shap_values, index, id,
         Add bar for final prediction.
     shap_lim: tuple: (float, float)
         Limits of shap value axis.
-    color: list
+    color: 2-tuple
         Color used for negative and postive shap_values respecitvely.
     n_top: int
         Number of shap_values to plot. Rest is aggregated to "... the rest" category.
-    multiclass_index: int
-        Which multiclass label should be printed.
 
     Returns
     -------
     Nothing
     """    
 
-    # Subset in case of multiclass
-    if multiclass_index is not None:
-        base_values = shap_values.base_values[:, multiclass_index]
-        values = shap_values.values[:, :, multiclass_index]
-    else:
-        base_values = shap_values.base_values
-        values = shap_values.values
-
     # Shap values to dataframe
     df_shap = (pd.concat([pd.DataFrame({"variable": "intercept",
                                         "variable_value": np.nan,
-                                        "shap": base_values[index]}, index=[0]),
+                                        "shap": shap_values.base_values[index]}, index=[0]),
                           pd.DataFrame({"variable": shap_values.feature_names[index],
                                         "variable_value": shap_values.data[index],
-                                        "shap": values[index]})
+                                        "shap": shap_values.values[index]})
                           .assign(tmp=lambda x: x["shap"].abs())
                           .sort_values("tmp", ascending=False)
                           .drop(columns="tmp")])
