@@ -641,7 +641,6 @@ def _helper_inner_barplot_rotated(ax, x, y, inset_size=0.2):
     if len(xticks) > len(y):
         _ = inset_ax.set_xticks(xticks[1::2])
     _ = ax.set_yticks(yticks[(yticks >= ylim[0]) & (yticks <= ylim[1])])
-     
 
 
 def plot_cate_CLASS(ax,
@@ -801,13 +800,13 @@ def plot_cate_MULTICLASS(ax,
     # Reverse feature
     if reverse_feature:
         df_plot = df_plot.iloc[::-1]
-        
+
     # Reverse target
     target_categories = list(np.sort(target.unique()))
     if reverse_target:
-        target_categories = target_categories[::-1]   
+        target_categories = target_categories[::-1]
         color = color[(len(target_categories)-1)::-1]
-                      
+
     # Segmented barplot
     offset = np.zeros(len(df_plot))
     for m, member in enumerate(target_categories):
@@ -828,7 +827,7 @@ def plot_cate_MULTICLASS(ax,
         _helper_inner_barplot(ax, x=df_plot[feature.name + "_fmt"], y=df_plot["pct"], inset_size=inset_size)
     else:
         #ax.set_xticklabels(labels=ax.get_xticklabels(), rotation=45)
-        _helper_inner_barplot_rotated(ax, x=df_plot[feature.name + "_fmt"], y=df_plot["pct"], 
+        _helper_inner_barplot_rotated(ax, x=df_plot[feature.name + "_fmt"], y=df_plot["pct"],
                                       inset_size=inset_size)
 
     # Missing information
@@ -936,6 +935,9 @@ def plot_nume_CLASS(ax,
                     feature_name=None, target_name=None,
                     feature_lim=None,
                     inset_size=0.2, n_bins=20,
+                    show_hist=True,
+                    fill=True,
+                    alpha=0.5,
                     title=None,
                     add_miss_info=True,
                     rasterized_boxplot=False,
@@ -960,6 +962,12 @@ def plot_nume_CLASS(ax,
         Limits the x-axis on which the feature is plotted.
     inset_size: float
         Relative size of distribution bar plot on y-axis.
+    show_hist: boolean
+        Show histogram or only kde.
+    fill: boolean
+        Fill histogram or kde.
+    alpha: float
+        Color intensity.
     n_bins: int
         Number of histogram bins.
     title: str
@@ -989,9 +997,13 @@ def plot_nume_CLASS(ax,
     color = color[:target.nunique()]
 
     # Distribution plot
-    sns.histplot(ax=ax, x=feature, hue=target, hue_order=np.sort(target.unique()),
-                 stat="density", common_norm=False, kde=True, bins=n_bins,
-                 palette=color)
+    if show_hist:
+      sns.histplot(ax=ax, x=feature, hue=target, hue_order=np.sort(target.unique()),
+                   stat="density", common_norm=False, kde=True, bins=n_bins,
+                   palette=color, alpha=alpha)
+    else:
+      sns.kdeplot(ax=ax, x=feature, hue=target, hue_order=np.sort(target.unique()),
+                  fill=fill, alpha=alpha)
     ax.set_ylabel("Density")
     ax.set_title(title)
 
@@ -1022,6 +1034,9 @@ def plot_nume_MULTICLASS(ax,
                          feature_name=None, target_name=None,
                          feature_lim=None,
                          inset_size=0.2, n_bins=20,
+                         show_hist=True,
+                         fill=True,
+                         alpha=0.5,
                          title=None,
                          add_miss_info=True,
                          rasterized_boxplot=False,
@@ -1068,6 +1083,8 @@ def plot_nume_MULTICLASS(ax,
                     feature_name=feature_name, target_name=target_name,
                     feature_lim=feature_lim,
                     inset_size=inset_size, n_bins=n_bins,
+                    show_hist=show_hist,
+                    fill=fill, alpha=alpha,
                     title=title, add_miss_info=add_miss_info, rasterized_boxplot=rasterized_boxplot,
                     color=color,
                     verbose=verbose)
@@ -1414,7 +1431,7 @@ def plot_feature_target(ax,
             raise Exception('Wrong TARGET_TYPE')
     else:
         if target_type == "CLASS":
-            plot_cate_CLASS(**params_shared, **kwargs_reduce(kwargs, plot_nume_CLASS))
+            plot_cate_CLASS(**params_shared, **kwargs_reduce(kwargs, plot_cate_CLASS))
         elif target_type == "MULTICLASS":
             plot_cate_MULTICLASS(**params_shared, **kwargs_reduce(kwargs, plot_cate_MULTICLASS))
         elif target_type == "REGR":
@@ -1569,6 +1586,7 @@ class KFoldSep(KFold):
     ----------
     Same as for KFold
     """
+
     def __init__(self, *args, shuffle=True, **kwargs):
         super().__init__(shuffle=shuffle, *args, **kwargs)
 
@@ -1590,6 +1608,7 @@ class InSampleSplit:
     random_state: int
         Seed.    
     """
+
     def __init__(self, shuffle=True, random_state=42):
         self.shuffle = shuffle
         self.random_state = random_state
@@ -1619,6 +1638,7 @@ class ColumnSelector(BaseEstimator, TransformerMixin):
     ----------
     None
     """
+
     def __init__(self, columns=None):
         self.columns = columns
 
@@ -1627,7 +1647,6 @@ class ColumnSelector(BaseEstimator, TransformerMixin):
 
     def transform(self, df, *args):
         return df[self.columns]
-
 
 
 class GridSearchCV_xlgb(GridSearchCV):
@@ -1644,6 +1663,7 @@ class GridSearchCV_xlgb(GridSearchCV):
     ----------
     Same as for GridSearchCV
     """
+
     def fit(self, X, y=None, **fit_params):
         # pdb.set_trace()
 
@@ -2001,14 +2021,14 @@ def scale_predictions(yhat, b_sample=None, b_all=None):
         # Make yhat 2-dimensional (needed in classification setting)
         if yhat.ndim == 1:
             flag_1dim = True
-            yhat = np.column_stack((1 - yhat, yhat))  
+            yhat = np.column_stack((1 - yhat, yhat))
         yhat_unnormed = (yhat * b_all) / b_sample  # basic rescaling which also needs norming to be correct
         yhat_rescaled = yhat_unnormed / yhat_unnormed.sum(axis=1, keepdims=True)  # norming
-        
+
         # Adapt to orignal shape
         if flag_1dim:
             yhat_rescaled = yhat_rescaled[:, 1]
-            
+
     return yhat_rescaled
 
 
@@ -2033,6 +2053,7 @@ class ScalingEstimator(BaseEstimator):
     fitted_: boolean, denoting whether instance is fitted.
 
     """
+
     def __init__(self, subestimator, b_sample=None, b_all=None, **kwargs):
         self.subestimator = subestimator
         self.b_sample = b_sample
@@ -2070,7 +2091,7 @@ class ScalingEstimator(BaseEstimator):
         print("")
         # Binary prediction
         if self._estimator_type == "classifier":
-            yhat = self.classes_[np.argmax(self.predict_proba(X, *args, **kwargs), 
+            yhat = self.classes_[np.argmax(self.predict_proba(X, *args, **kwargs),
                                            axis=1)]
         # Regression
         else:
@@ -2101,6 +2122,7 @@ class XGBClassifier_rescale(xgb.XGBClassifier):
     ----------
     All attributes of XGBClassifier
     """
+
     def __init__(self, b_sample=None, b_all=None, **kwargs):
         super().__init__(**kwargs)
         self.b_sample = b_sample
@@ -2110,7 +2132,6 @@ class XGBClassifier_rescale(xgb.XGBClassifier):
         yhat = scale_predictions(super().predict_proba(X, *args, **kwargs),
                                  b_sample=self.b_sample, b_all=self.b_all)
         return yhat
-
 
 
 class TabNetcustom(BaseEstimator):
@@ -2136,24 +2157,25 @@ class TabNetcustom(BaseEstimator):
     fitted_: boolean, denoting whether instance is fitted.
 
     """
+
     def __init__(self, subestimator, batch_size=1024, max_epochs=200, patience=15, **kwargs):
         self.subestimator = subestimator
         self.batch_size = batch_size
         self.max_epochs = max_epochs
         self.patience = patience
         if isinstance(self.subestimator, TabNetRegressor):
-            self._estimator_type = "regressor"  
+            self._estimator_type = "regressor"
         else:
             self._estimator_type = "classifier"
         if kwargs:
             self.subestimator.set_params(**kwargs)
-     
+
     def get_params(self, deep=True):
         return dict(subestimator=self.subestimator,
                     batch_size=self.batch_size,
                     max_epochs=self.max_epochs,
                     patience=self.patience,
-                    **self.subestimator.get_params())  
+                    **self.subestimator.get_params())
 
     def set_params(self, **params):
         if "subestimator" in params:
@@ -2174,7 +2196,7 @@ class TabNetcustom(BaseEstimator):
     def fit(self, X, y, *args, **kwargs):
         if self._estimator_type == "classifier":
             self.classes_ = unique_labels(y)
-                            
+
         # Fit
         self.subestimator.fit(X, y, *args,
                               batch_size=self.batch_size, max_epochs=self.max_epochs, patience=self.patience,
@@ -2187,7 +2209,6 @@ class TabNetcustom(BaseEstimator):
 
     def predict_proba(self, X, *args, **kwargs):
         return self.subestimator.predict_proba(X, *args, **kwargs)
-
 
 
 class UndersampleEstimator(BaseEstimator):
@@ -2212,6 +2233,7 @@ class UndersampleEstimator(BaseEstimator):
     b_all_:  numpy array, comprising base rate of "original"" data.
     fitted_: boolean, denoting whether instance is fitted.
     """
+
     def __init__(self, subestimator, n_max_per_level=np.inf, seed=42, **kwargs):
         self.subestimator = subestimator
         self.n_max_per_level = n_max_per_level
@@ -2257,7 +2279,7 @@ class UndersampleEstimator(BaseEstimator):
             self.b_sample_ = df_tmp["y"].value_counts().values / len(df_tmp)
         y_under = df_tmp["y"].values
         X_under = X[df_tmp["index"].values, :]
-        
+
         # Denote that it is fitted
         self.fitted_ = True  # "dummy" (can be any xxx_) attribute for scikit to recognize estimator is fitted
 
@@ -2269,7 +2291,7 @@ class UndersampleEstimator(BaseEstimator):
         print("")
         # Binary prediction
         if self._estimator_type == "classifier":
-            yhat = self.classes_[np.argmax(self.predict_proba(X, *args, **kwargs), 
+            yhat = self.classes_[np.argmax(self.predict_proba(X, *args, **kwargs),
                                            axis=1)]
         # Regression
         else:
@@ -2303,6 +2325,7 @@ class LogtrafoEstimator(BaseEstimator):
     varest_: float, variance of residuals.
     fitted_: boolean, denoting whether instance is fitted.
     """
+
     def __init__(self, subestimator, variance_scaling_factor=1, **kwargs):
         self.subestimator = subestimator
         self.variance_scaling_factor = variance_scaling_factor
@@ -2327,7 +2350,7 @@ class LogtrafoEstimator(BaseEstimator):
 
     def fit(self, X, y, *args, **kwargs):
         self.subestimator.fit(X, np.log(1 + y), *args, **kwargs)
-        
+
         # Calculate an overall error variance by residuals
         res = self.subestimator.predict(X) - np.log(1 + y)
         print(np.std(res)**2)
@@ -2336,7 +2359,7 @@ class LogtrafoEstimator(BaseEstimator):
         return self
 
     def predict(self, X, *args, **kwargs):
-        # Retransform respecting error variance 
+        # Retransform respecting error variance
         yhat = (np.exp(self.subestimator.predict(X, *args, **kwargs) +
                        0.5 * self.variance_scaling_factor * self.varest_) - 1)
         return yhat
@@ -2416,7 +2439,7 @@ def variable_importance(estimator, df, y, features, scorer, target_type=None,
         return score
     scores = Parallel(n_jobs=n_jobs, max_nbytes='100M')(delayed(run_in_parallel)(df, feature)
                                                         for feature in features)
-    
+
     # Calc performance diff, i.e. importance
     df_varimp = varimp2df({"importances_mean": score_orig - scores}, features)
     return df_varimp
@@ -2455,7 +2478,7 @@ def partial_dependence(estimator, df, features,
 
     # Calc partial dependence
     def run_in_parallel(feature, df, df_ref):
-        
+
         # Derive value grid for which dependence is calculated
         if pd.api.types.is_numeric_dtype(df_ref[feature]):
             values = np.unique(df_ref[feature].quantile(quantiles).values)
@@ -2518,7 +2541,7 @@ def shap2pd(shap_values, features,
         if pd.api.types.is_numeric_dtype(df_ref[feature]):
             kbinsdiscretizer_fit = KBinsDiscretizer(n_bins=n_bins, encode="ordinal").fit(df_ref[[feature]])
             bin_edges = kbinsdiscretizer_fit.bin_edges_
-            bin_labels = np.array(["q" + format(i + 1, "02d") + " (" + 
+            bin_labels = np.array(["q" + format(i + 1, "02d") + " (" +
                                    format(bin_edges[0][i], format_string) + " - " +
                                    format(bin_edges[0][i + 1], format_string) + ")"
                                    for i in range(len(bin_edges[0]) - 1)])
@@ -2597,7 +2620,7 @@ def agg_shap_values(shap_values, df_explain, len_nume, l_map_onehot, round=2):
 # --- Plots ------------------------------------------------------------------------------------------------------------
 
 def plot_roc(ax, y, yhat, annotate=True, fontsize=10,
-             color=list(sns.color_palette("colorblind").as_hex()), 
+             color=list(sns.color_palette("colorblind").as_hex()),
              target_labels=None):
     """
     Plot roc curve. Also capable of Multiclass data, plotting OvR (one-vs-rest) roc curves. Additionally capable
@@ -2634,14 +2657,14 @@ def plot_roc(ax, y, yhat, annotate=True, fontsize=10,
 
     # CLASS (and regression)
     if yhat.ndim == 1:
-        
+
         # Roc curve
         fpr, tpr, cutoff = roc_curve(y, yhat)
         cutoff[0] = 1
         roc_auc = roc_auc_score(y, yhat)
-        ax.plot(fpr, tpr)  # sns.lineplot(fpr, tpr, ax=ax, palette=sns.xkcd_palette(["red"]))        
+        ax.plot(fpr, tpr)  # sns.lineplot(fpr, tpr, ax=ax, palette=sns.xkcd_palette(["red"]))
         ax.set_title(f"ROC (AUC = {roc_auc:0.2f})")
-        
+
         # Annotate text
         if annotate:
             for thres in np.arange(0.1, 1, 0.1):
@@ -2650,12 +2673,12 @@ def plot_roc(ax, y, yhat, annotate=True, fontsize=10,
 
     # MULTICLASS
     else:
-        
+
         # OvR (one-vs-rest) auc calculation
         n_classes = yhat.shape[1]
-        aucs = np.array([round(roc_auc_score(np.where(y == i, 1, 0), 
-                                             yhat[:, i]), 2) for i in np.arange(n_classes)])  
-        
+        aucs = np.array([round(roc_auc_score(np.where(y == i, 1, 0),
+                                             yhat[:, i]), 2) for i in np.arange(n_classes)])
+
         # Roc curves
         for i in np.arange(n_classes):
             y_bin = np.where(y == i, 1, 0)
@@ -2665,7 +2688,7 @@ def plot_roc(ax, y, yhat, annotate=True, fontsize=10,
             else:
                 new_label = str(i) + " (" + str(aucs[i]) + ")"
             ax.plot(fpr, tpr, color=color[i], label=new_label)
-            
+
         # Title and legend
         mean_auc = np.average(aucs).round(3)
         weighted_auc = np.average(aucs, weights=np.array(np.unique(y, return_counts=True))[1, :]).round(3)
@@ -2679,7 +2702,7 @@ def plot_roc(ax, y, yhat, annotate=True, fontsize=10,
 
 
 def plot_calibration(ax, y, yhat, n_bins=5,
-                     color=list(sns.color_palette("colorblind").as_hex()), 
+                     color=list(sns.color_palette("colorblind").as_hex()),
                      target_labels=None):
     """
     Plot calibration curve. 
@@ -2703,7 +2726,7 @@ def plot_calibration(ax, y, yhat, n_bins=5,
     -------
     Nothing
     """
-    
+
     # Initialize settings needed for diagonal line processing
     minmin = np.inf
     maxmax = -np.inf
@@ -2797,7 +2820,7 @@ def plot_confusion(ax, y, yhat, threshold=0.5, cmap="Blues", target_labels=None)
     sns.heatmap(df_conf, annot=True, fmt=".5g", cmap=cmap, ax=ax,
                 xticklabels=True, yticklabels=True, cbar=False)
     ax.set_yticklabels(labels=ylabels, rotation=0)
-    ax.set_xticklabels(labels=xlabels, 
+    ax.set_xticklabels(labels=xlabels,
                        rotation=45 if yhat.ndim > 1 else 0,
                        ha="right" if yhat.ndim > 1 else "center")
     ax.set_xlabel("Predicted label (#: %)")
@@ -2872,7 +2895,7 @@ def plot_multiclass_metrics(ax, y, yhat, target_labels=None):
     -------
     Nothing
     """
-    
+
     # Calculate metrics
     m_conf = confusion_matrix(y, yhat.argmax(axis=1))
     aucs = np.array([round(roc_auc_score(np.where(y == i, 1, 0), yhat[:, i]), 2) for i in np.arange(yhat.shape[1])])
@@ -2893,7 +2916,7 @@ def plot_multiclass_metrics(ax, y, yhat, target_labels=None):
                   .groupby(["label"])["acc_top1", "acc_top2", "acc_top3"].agg("mean").round(2)
                   .join(pd.DataFrame(np.stack((aucs, rec, prec, f1), axis=1),
                                      index=target_labels, columns=["auc", "recall", "precision", "f1"])))
-    
+
     # "Plot" df_metrics as heatmap without color
     sns.heatmap(df_metrics.T, annot=True, fmt=".5g",
                 cmap=ListedColormap(['white']), linewidths=2, linecolor="black", cbar=False,
@@ -2976,8 +2999,8 @@ def plot_precision(ax, y, yhat, annotate=True, fontsize=10):
     for thres in cutoff:
         pct_tested = np.append(pct_tested, [np.sum(yhat >= thres) / len(yhat)])
 
-    # Plot curve    
-    ax.plot(pct_tested, prec)  #sns.lineplot(pct_tested, prec[:-1], ax=ax, palette=sns.xkcd_palette(["red"]))
+    # Plot curve
+    ax.plot(pct_tested, prec)  # sns.lineplot(pct_tested, prec[:-1], ax=ax, palette=sns.xkcd_palette(["red"]))
     props = {'xlabel': "% Samples Tested",
              'ylabel': r"precision: P($y$=1|$\^y$=1)",
              'title': "Precision Curve"}
@@ -3271,8 +3294,8 @@ def plot_variable_importance(ax,
         ax.plot(importance_cum, features, color="black", marker="o")
         ax.set_xlabel(ax.get_xlabel() + " /\n" + r"cumulative in % (-$\bullet$-)")
     if importance_error is not None:
-        ax.errorbar(x=importance_mean if importance_mean is not None else importance, 
-                    y=features, 
+        ax.errorbar(x=importance_mean if importance_mean is not None else importance,
+                    y=features,
                     xerr=importance_error,
                     linestyle="none", marker="s", fillstyle="none", color=color_error)
         ax.set_title(ax.get_title() + r" (incl. error (-$\boxminus$-))")
@@ -3390,7 +3413,7 @@ def plot_pd(ax, feature_name, feature, yhat, feature_ref=None, yhat_err=None, re
 
         # Inner barplot
         if feature_ref is not None:
-            _helper_inner_barplot(ax, 
+            _helper_inner_barplot(ax,
                                   x=df_plot[feature_name + "_fmt"],
                                   y=df_plot["pct"], inset_size=0.2)
 
@@ -3412,7 +3435,7 @@ def plot_shap(ax, shap_values, index, id,
               y_str=None, yhat_str=None,
               show_intercept=True, show_prediction=True,
               shap_lim=None,
-              color=("blue", "red"), 
+              color=("blue", "red"),
               n_top=10):
     """
     # Plot shapley values.
@@ -3445,7 +3468,7 @@ def plot_shap(ax, shap_values, index, id,
     Returns
     -------
     Nothing
-    """    
+    """
 
     # Shap values to dataframe
     df_shap = (pd.concat([pd.DataFrame({"variable": "intercept",
